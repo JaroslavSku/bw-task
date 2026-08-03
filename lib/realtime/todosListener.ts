@@ -84,7 +84,8 @@ function scheduleReconnect(state: ListenerState): void {
     }
     try {
       await ensureConnected(state)
-    } catch {
+    } catch (error) {
+      logger.warn({ err: error }, "todos listener could not reconnect")
       scheduleReconnect(state)
     }
   }, reconnectDelayMs)
