@@ -16,3 +16,10 @@ export function getPool(): Pool {
   }
   return globalScope.pgPool
 }
+
+export async function closePool(): Promise<void> {
+  if (globalScope.pgPool) {
+    await globalScope.pgPool.end()
+    globalScope.pgPool = undefined
+  }
+}

@@ -8,7 +8,10 @@ interface ListenerState {
   client: Client | null
   handlers: Set<ChangeHandler>
   connecting: boolean
+  reconnectTimer: ReturnType<typeof setTimeout> | null
 }
+
+const reconnectDelayMs = 3_000
 
 const globalScope = globalThis as unknown as { todosListener?: ListenerState }
 
@@ -18,6 +21,7 @@ function getListenerState(): ListenerState {
       client: null,
       handlers: new Set(),
       connecting: false,
+      reconnectTimer: null,
     }
   }
   return globalScope.todosListener
@@ -42,29 +46,47 @@ function handleNotification(
   }
 }
 
+function discardClient(state: ListenerState, client: Client): void {
+  if (state.client === client) {
+    state.client = null
+  }
+  client.end().catch(() => undefined)
+}
+
+function scheduleReconnect(state: ListenerState): void {
+  if (state.reconnectTimer || state.handlers.size === 0) {
+    return
+  }
+  state.reconnectTimer = setTimeout(() => {
+    state.reconnectTimer = null
+    if (state.handlers.size === 0) {
+      return
+    }
+    ensureConnected(state).catch(() => scheduleReconnect(state))
+  }, reconnectDelayMs)
+}
+
 async function ensureConnected(state: ListenerState): Promise<void> {
   if (state.client || state.connecting) {
     return
   }
   state.connecting = true
+  const client = new Client({ connectionString: getEnv().DATABASE_URL })
   try {
-    const client = new Client({ connectionString: getEnv().DATABASE_URL })
     await client.connect()
     client.on("notification", (message) =>
       handleNotification(state, message.payload),
     )
     client.on("error", (error) => {
       logger.error({ err: error }, "todos listener lost database connection")
-      state.client = null
-      client.end().catch(() => undefined)
-      setTimeout(() => {
-        if (state.handlers.size > 0) {
-          ensureConnected(state).catch(() => undefined)
-        }
-      }, 3_000)
+      discardClient(state, client)
+      scheduleReconnect(state)
     })
     await client.query("listen todos_changed")
     state.client = client
+  } catch (error) {
+    discardClient(state, client)
+    throw error
   } finally {
     state.connecting = false
   }
@@ -75,8 +97,28 @@ export async function subscribeTodoChanges(
 ): Promise<() => void> {
   const state = getListenerState()
   state.handlers.add(handler)
-  await ensureConnected(state)
+  try {
+    await ensureConnected(state)
+  } catch (error) {
+    state.handlers.delete(handler)
+    throw error
+  }
   return () => {
     state.handlers.delete(handler)
+  }
+}
+
+export async function closeTodosListener(): Promise<void> {
+  const state = getListenerState()
+  if (state.reconnectTimer) {
+    clearTimeout(state.reconnectTimer)
+    state.reconnectTimer = null
+  }
+  state.handlers.clear()
+
+  const client = state.client
+  state.client = null
+  if (client) {
+    await client.end()
   }
 }

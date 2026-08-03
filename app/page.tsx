@@ -40,12 +40,9 @@ export default function Home() {
   const debouncedSearch = useDebouncedValue(searchQuery, 300)
 
   const [refreshCounter, setRefreshCounter] = useState(0)
+  const debouncedRefreshCounter = useDebouncedValue(refreshCounter, 150)
 
   const todosRef = useRef<Todo[]>([])
-
-  useEffect(() => {
-    todosRef.current = todos
-  }, [todos])
 
   useEffect(() => {
     if (!actionError) return
@@ -73,6 +70,7 @@ export default function Home() {
         }
         const data: TodosResponse = await response.json()
         setTodos(data.todos)
+        todosRef.current = data.todos
         setCategories(data.categories)
         setStats(data.stats)
         setLoadState({ status: "ready" })
@@ -92,7 +90,7 @@ export default function Home() {
     filterPriority,
     filterStatus,
     debouncedSearch,
-    refreshCounter,
+    debouncedRefreshCounter,
     router,
   ])
 
@@ -130,13 +128,16 @@ export default function Home() {
       errorMessage: string,
     ) => {
       const previousTodos = todosRef.current
-      setTodos(applyOptimistic)
+      const optimisticTodos = applyOptimistic(previousTodos)
+      todosRef.current = optimisticTodos
+      setTodos(optimisticTodos)
 
       try {
         const response = await performRequest()
         if (!response.ok) throw new Error(errorMessage)
         requestRefresh()
       } catch {
+        todosRef.current = previousTodos
         setTodos(previousTodos)
         setActionError(errorMessage)
       }

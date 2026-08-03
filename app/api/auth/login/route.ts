@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { verifyPassword } from "@/lib/auth/password"
+import { dummyPasswordHash, verifyPassword } from "@/lib/auth/password"
 import {
   createSessionToken,
   sessionCookieName,
@@ -28,12 +28,11 @@ export function POST(request: Request): Promise<Response> {
 
     const { email, password } = parsedCredentials.data
     const user = await findUserByEmail(email.toLowerCase())
-    if (!user) {
-      return jsonError(401, "invalid email or password")
-    }
-
-    const passwordMatches = await verifyPassword(password, user.passwordHash)
-    if (!passwordMatches) {
+    const passwordMatches = await verifyPassword(
+      password,
+      user?.passwordHash ?? dummyPasswordHash,
+    )
+    if (!user || !passwordMatches) {
       return jsonError(401, "invalid email or password")
     }
 

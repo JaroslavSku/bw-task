@@ -28,7 +28,7 @@ export const createTodoSchema = z.object({
   text: todoSchema.shape.text,
   priority: prioritySchema.default("medium"),
   category: categorySchema.default("other"),
-  dueDate: dueDateSchema.optional(),
+  dueDate: dueDateSchema.nullish(),
 })
 
 export const updateTodoSchema = z

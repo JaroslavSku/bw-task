@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest"
-import { getPool } from "@/lib/db"
+import { closePool, getPool } from "@/lib/db"
 import {
   createTodo,
   deleteTodo,
@@ -23,7 +23,7 @@ beforeEach(async () => {
 })
 
 afterAll(async () => {
-  await getPool().end()
+  await closePool()
 })
 
 describe("users repository", () => {

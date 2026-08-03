@@ -15,13 +15,23 @@ const priorityConfig: Record<
   high: { label: "High", color: "text-red-400", bg: "bg-red-400/10" },
 }
 
-function isOverdue(todo: Todo): boolean {
-  if (!todo.dueDate || todo.done) return false
-  return new Date(todo.dueDate) < new Date()
+function parseDueDate(dueDate: string): Date {
+  return new Date(`${dueDate}T00:00:00`)
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
+function startOfToday(): Date {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return today
+}
+
+function isOverdue(todo: Todo): boolean {
+  if (!todo.dueDate || todo.done) return false
+  return parseDueDate(todo.dueDate) < startOfToday()
+}
+
+function formatDate(dueDate: string): string {
+  const date = parseDueDate(dueDate)
   const today = new Date()
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)
@@ -57,7 +67,10 @@ export const TodoItem = memo(function TodoItem({
   const categoryColor = categoryInfo?.color ?? "#6b7280"
   const overdue = isOverdue(todo)
 
+  const pending = todo.id < 0
+
   const startEditing = () => {
+    if (pending) return
     setEditText(todo.text)
     setEditing(true)
   }
@@ -78,10 +91,12 @@ export const TodoItem = memo(function TodoItem({
         overdue
           ? "bg-red-500/10 border-red-500/30"
           : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20",
+        pending && "opacity-60",
       )}
     >
       <button
         onClick={() => onToggle(todo.id, !todo.done)}
+        disabled={pending}
         className={cn(
           "flex-shrink-0 mt-0.5 flex items-center justify-center w-5 h-5 rounded-full border-2 transition-all duration-300",
           todo.done
@@ -179,7 +194,8 @@ export const TodoItem = memo(function TodoItem({
             onChangePriority(todo.id, event.target.value as Priority)
           }
           onClick={(event) => event.stopPropagation()}
-          className="bg-white/10 border-0 rounded text-xs py-1 px-1 focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer"
+          disabled={pending}
+          className="bg-white/10 border-0 rounded text-xs py-1 px-1 focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer disabled:cursor-not-allowed"
         >
           <option value="low">Low</option>
           <option value="medium">Med</option>
@@ -187,7 +203,8 @@ export const TodoItem = memo(function TodoItem({
         </select>
         <button
           onClick={() => onDelete(todo.id)}
-          className="p-1.5 hover:bg-red-500/20 rounded-lg text-muted-foreground hover:text-red-400 transition-colors"
+          disabled={pending}
+          className="p-1.5 hover:bg-red-500/20 rounded-lg text-muted-foreground hover:text-red-400 transition-colors disabled:cursor-not-allowed"
         >
           <Trash2 className="w-4 h-4" />
         </button>
