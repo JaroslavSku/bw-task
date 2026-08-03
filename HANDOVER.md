@@ -55,6 +55,27 @@ jinak limitneš proxy místo útočníka.
 
 ---
 
+## [P2] Bezpečnostní hlavičky
+
+**Kontext:** Odpovědi neposílají žádné bezpečnostní hlavičky, Next.js je sám
+nepřidává. Aplikaci tak jde vložit do iframu na cizí web (clickjacking).
+Ostatní chybějící hlavičky jsou obrana do hloubky. Ověřeno útoky, že SQL
+injection, IDOR ani XSS zneužít nejdou, tohle je jediná otevřená mezera.
+
+**Úkol:** Ve dvou krocích podle rizika změny:
+
+1. Bezpečné hned, přes `headers()` v `next.config.mjs`: `X-Frame-Options: DENY`,
+   `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`.
+2. Zvlášť a s testováním: `Content-Security-Policy` a `Strict-Transport-Security`
+   (HSTS dává smysl řešit v Caddy, ne v aplikaci).
+
+**Hotovo, když:** securityheaders.com dá doméně aspoň B a aplikace se nedá
+vložit do iframu.
+
+**Odhad:** 15 min na první krok, 3-4 h na CSP
+
+---
+
 ## [P1] Index pro fulltextové hledání (pg_trgm)
 
 **Kontext:** Hledání v `lib/repositories/todos.ts` skládá `text ilike '%vyraz%'`.
