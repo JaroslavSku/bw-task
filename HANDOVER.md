@@ -55,6 +55,24 @@ jinak limitneš proxy místo útočníka.
 
 ---
 
+## [P1] Index pro fulltextové hledání (pg_trgm)
+
+**Kontext:** Hledání v `lib/repositories/todos.ts` skládá `text ilike '%vyraz%'`.
+Vzor začínající zástupným znakem žádný btree index využít nedokáže, takže
+Postgres projde všechny řádky uživatele. Je to nejdražší dotaz v aplikaci.
+
+**Úkol:** Migrací zapni `pg_trgm` a přidej GIN index nad `text`
+(`using gin (text gin_trgm_ops)`).
+
+**Hotovo, když:** `explain (analyze)` na dotazu se `search` ukazuje místo
+sekvenčního průchodu bitmap index scan.
+
+**Odhad:** 1-2 h
+**Pozor na:** na pár stovkách řádků zvolí plánovač seq scan i tak, měř na
+realistickém objemu. `create extension` chce superuživatele.
+
+---
+
 ## [P2] Zálohy databáze
 
 **Kontext:** Postgres běží v kontejneru s volume `db-data` na jediné VM.
