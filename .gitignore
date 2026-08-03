@@ -45,3 +45,6 @@ next-env.d.ts
 terraform/.terraform/
 terraform/*.tfstate*
 terraform/terraform.tfvars
+
+# personal notes, not part of the submission
+/docs/
