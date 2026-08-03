@@ -7,12 +7,12 @@ import {
 
 const notifyTimeoutMs = 2_000
 
-function waitForUserId(expectedUserId: number): {
-  handler: (userId: number) => void
-  received: Promise<number>
+function waitForChange(): {
+  handler: () => void
+  received: Promise<void>
 } {
-  let resolveReceived: (userId: number) => void = () => undefined
-  const received = new Promise<number>((resolve, reject) => {
+  let resolveReceived: () => void = () => undefined
+  const received = new Promise<void>((resolve, reject) => {
     resolveReceived = resolve
     setTimeout(
       () => reject(new Error("notification did not arrive in time")),
@@ -20,14 +20,7 @@ function waitForUserId(expectedUserId: number): {
     )
   })
 
-  return {
-    handler: (userId) => {
-      if (userId === expectedUserId) {
-        resolveReceived(userId)
-      }
-    },
-    received,
-  }
+  return { handler: () => resolveReceived(), received }
 }
 
 async function notifyUserId(userId: number): Promise<void> {
@@ -44,12 +37,12 @@ afterAll(async () => {
 
 describe("todos listener", () => {
   it("delivers a notification to a subscribed handler", async () => {
-    const { handler, received } = waitForUserId(42)
-    const unsubscribe = await subscribeTodoChanges(handler)
+    const { handler, received } = waitForChange()
+    const unsubscribe = await subscribeTodoChanges(42, handler)
 
     try {
       await notifyUserId(42)
-      expect(await received).toBe(42)
+      await expect(received).resolves.toBeUndefined()
     } finally {
       unsubscribe()
     }
@@ -57,13 +50,13 @@ describe("todos listener", () => {
 
   it("stops delivering after unsubscribe", async () => {
     let callCount = 0
-    const unsubscribe = await subscribeTodoChanges(() => {
+    const unsubscribe = await subscribeTodoChanges(7, () => {
       callCount += 1
     })
     unsubscribe()
 
-    const { handler, received } = waitForUserId(7)
-    const unsubscribeSecond = await subscribeTodoChanges(handler)
+    const { handler, received } = waitForChange()
+    const unsubscribeSecond = await subscribeTodoChanges(7, handler)
 
     try {
       await notifyUserId(7)
@@ -75,19 +68,38 @@ describe("todos listener", () => {
   })
 
   it("shares one connection between subscribers", async () => {
-    const first = waitForUserId(1)
-    const second = waitForUserId(1)
-    const unsubscribeFirst = await subscribeTodoChanges(first.handler)
-    const unsubscribeSecond = await subscribeTodoChanges(second.handler)
+    const first = waitForChange()
+    const second = waitForChange()
+    const unsubscribeFirst = await subscribeTodoChanges(1, first.handler)
+    const unsubscribeSecond = await subscribeTodoChanges(1, second.handler)
 
     try {
       await notifyUserId(1)
-      expect(await Promise.all([first.received, second.received])).toEqual([
-        1, 1,
-      ])
+      await expect(
+        Promise.all([first.received, second.received]),
+      ).resolves.toEqual([undefined, undefined])
     } finally {
       unsubscribeFirst()
       unsubscribeSecond()
+    }
+  })
+
+  it("never wakes a handler belonging to another user", async () => {
+    let otherUserCalls = 0
+    const unsubscribeOther = await subscribeTodoChanges(101, () => {
+      otherUserCalls += 1
+    })
+
+    const { handler, received } = waitForChange()
+    const unsubscribeTarget = await subscribeTodoChanges(102, handler)
+
+    try {
+      await notifyUserId(102)
+      await received
+      expect(otherUserCalls).toBe(0)
+    } finally {
+      unsubscribeTarget()
+      unsubscribeOther()
     }
   })
 })
