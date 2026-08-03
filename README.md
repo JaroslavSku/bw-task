@@ -28,6 +28,46 @@ pnpm migrate
 pnpm dev
 ```
 
+## Co jsem našel a opravil
+
+Původní kód obsahoval nastražené chyby. Nejzávažnější jsem našel měřením, ne
+čtením:
+
+1. **Memory leak v `trackRequest()`**: každý požadavek uložil do modulové `Map`
+   ~4 MB (serializovaný `process.env`, stack trace, padding) a nikdy nemazal.
+   Funkce nedělala nic užitečného, odstraněna.
+2. **Únik tajemství**: tatáž funkce držela v paměti celé `process.env` včetně
+   hesla k databázi. Bezpečnostní problém, ne výkonnostní.
+3. **Umělé zpoždění 100 ms** v GET handleru.
+4. **Data v poli v paměti procesu**: restart znamenal ztrátu dat a druhá
+   instance viděla jiná data. Nahrazeno PostgreSQL.
+5. **Žádná validace vstupů**: `POST {}` vytvořil úkol bez textu, smazání
+   neexistujícího id vrátilo `200 success`. Teď Zod a správné stavové kódy.
+6. **Frontend bez ošetření chyb**: fetch bez catch, optimistické updaty bez
+   rollbacku, request na každou klávesu, race condition mezi odpověďmi.
+7. Drobnější: duplicitní `layout.js`, typy definované dvakrát, `strict: false`,
+   `id: Date.now()`, statistiky ve čtyřech průchodech polem.
+
+Později přibyla oprava, která by se projevila až v provozu: pg `Pool` bez
+`error` posluchače shodí **celý proces**, když padne nečinné spojení (restart
+databáze, výpadek sítě). Ověřeno pokusem: před opravou exit 1, po ní se pool
+sám zotaví.
+
+### Měření (autocannon, produkční build)
+
+| Metrika                        | Před                        | Po                    |
+| ------------------------------ | --------------------------- | --------------------- |
+| GET /api/todos, medián latence | 114 ms                      | **12 ms**             |
+| GET /api/todos, propustnost    | 43 req/s                    | **354 req/s**         |
+| 50 souběžných spojení, 15 s    | **pád serveru** (~23k chyb) | **0 chyb**, 386 req/s |
+| Paměť pod zátěží               | +4,2 MB/request, trvale     | stabilní              |
+
+Na 10 000 uživatelů z toho plyne: aplikace nedrží stav v paměti, takže jde
+pustit N instancí za load balancerem nad jednou databází. Realtime funguje i
+tak, protože společným bodem je Postgres (`LISTEN/NOTIFY`), ne paměť procesu.
+Index kopíruje hlavní dotaz, statistiky jsou jeden dotaz místo čtyř průchodů,
+seznam má stránkování a pool je omezený na 10 spojení na instanci.
+
 ## Architektura
 
 ```
