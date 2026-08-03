@@ -7,10 +7,8 @@ kontextu. U každé je uvedeno, co už v projektu je a na co si dát pozor.
 
 ## [HOTOVO] HTTPS s vlastní doménou (Caddy)
 
-Aplikace jede na `https://taskmaster.sportagio.app` — Caddy jako reverse proxy
-(image `caddy:2-alpine`, porty 80+443) s automatickým Let's Encrypt certifikátem,
-HTTP přesměrovává na HTTPS (308). Ověřeno end-to-end: registrace i login
-fungují, `Secure` cookie se drží.
+Aplikace  na `https://taskmaster.sportagio.app` — Caddy jako reverse proxy
+(image `caddy:2-alpine`, porty 80+443) s automatickým Let's Encrypt certifikátem
 
 **Pozor na jednu věc při dalších změnách:** `terraform/cloud-init.yaml.tftpl`
 je zdroj pravdy pro `tofu apply` from scratch, ale změna `user_data` u
@@ -101,7 +99,7 @@ a používej SHA tag, ne `latest`, ať je jasné, co přesně běží.
 
 ## [P3] E2E testy (Playwright)
 
-**Kontext:** Unit a integrační testy pokrývají schémata a SQL vrstvu (33 testů),
+**Kontext:** Unit a integrační testy pokrývají schémata a SQL vrstvu (37 testů),
 ale nikdo automaticky neklika UI. Kritické flow: registrace → přidání úkolu →
 označení hotovo → odhlášení → přihlášení → data tam pořád jsou.
 

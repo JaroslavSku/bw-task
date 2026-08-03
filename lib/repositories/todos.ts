@@ -59,6 +59,9 @@ export async function listTodos(
   if (filters.status === "completed") {
     conditions.push("done = true")
   }
+  if (filters.status === "overdue") {
+    conditions.push("done = false and due_date < current_date")
+  }
   if (filters.search) {
     values.push(`%${escapeLikePattern(filters.search)}%`)
     conditions.push(`text ilike $${values.length}`)

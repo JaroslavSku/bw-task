@@ -4,8 +4,11 @@ import { logger } from "@/lib/logger"
 import { subscribeTodoChanges } from "@/lib/realtime/todosListener"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
 const heartbeatIntervalMs = 25_000
+const reconnectDelayMs = 3_000
+const encoder = new TextEncoder()
 
 export function GET(request: Request): Promise<Response> {
   return handleRoute(async () => {
@@ -14,11 +17,12 @@ export function GET(request: Request): Promise<Response> {
       return new Response("unauthorized", { status: 401 })
     }
 
-    const encoder = new TextEncoder()
     let unsubscribe: () => void = () => undefined
     let heartbeat: ReturnType<typeof setInterval> | undefined
+    let closed = false
 
     const cleanup = () => {
+      closed = true
       unsubscribe()
       unsubscribe = () => undefined
       if (heartbeat) {
@@ -30,14 +34,20 @@ export function GET(request: Request): Promise<Response> {
     const stream = new ReadableStream({
       async start(controller) {
         const send = (chunk: string) => {
+          if (closed) {
+            return
+          }
           try {
             controller.enqueue(encoder.encode(chunk))
           } catch {
-            return
+            cleanup()
           }
         }
 
         const close = () => {
+          if (closed) {
+            return
+          }
           cleanup()
           try {
             controller.close()
@@ -46,7 +56,7 @@ export function GET(request: Request): Promise<Response> {
           }
         }
 
-        send("retry: 3000\n\n")
+        send(`retry: ${reconnectDelayMs}\n\n`)
 
         try {
           unsubscribe = await subscribeTodoChanges((changedUserId) => {
@@ -70,7 +80,7 @@ export function GET(request: Request): Promise<Response> {
           heartbeatIntervalMs,
         )
 
-        request.signal.addEventListener("abort", close)
+        request.signal.addEventListener("abort", close, { once: true })
       },
       cancel() {
         cleanup()
@@ -79,9 +89,9 @@ export function GET(request: Request): Promise<Response> {
 
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/event-stream",
+        "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     })
   })

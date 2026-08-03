@@ -100,7 +100,16 @@ export default function Home() {
 
   useEffect(() => {
     const source = new EventSource("/api/todos/stream")
+    let connectedBefore = false
+
+    source.addEventListener("open", () => {
+      if (connectedBefore) {
+        requestRefresh()
+      }
+      connectedBefore = true
+    })
     source.addEventListener("todos", requestRefresh)
+
     return () => source.close()
   }, [requestRefresh])
 
@@ -284,7 +293,13 @@ export default function Home() {
             </div>
           )}
 
-          {loadState.status === "ready" && <StatsBar stats={stats} />}
+          {loadState.status === "ready" && (
+            <StatsBar
+              stats={stats}
+              filterStatus={filterStatus}
+              onFilterStatusChange={setFilterStatus}
+            />
+          )}
 
           <div className="mb-6 space-y-3">
             <FilterBar

@@ -7,10 +7,11 @@ type ChangeHandler = (userId: number) => void
 interface ListenerState {
   client: Client | null
   handlers: Set<ChangeHandler>
-  connecting: boolean
+  connectionPromise: Promise<void> | null
   reconnectTimer: ReturnType<typeof setTimeout> | null
 }
 
+const channel = "todos_changed"
 const reconnectDelayMs = 3_000
 
 const globalScope = globalThis as unknown as { todosListener?: ListenerState }
@@ -20,7 +21,7 @@ function getListenerState(): ListenerState {
     globalScope.todosListener = {
       client: null,
       handlers: new Set(),
-      connecting: false,
+      connectionPromise: null,
       reconnectTimer: null,
     }
   }
@@ -34,15 +35,26 @@ function handleNotification(
   if (!rawPayload) {
     return
   }
+
+  let payload: { userId?: unknown }
   try {
-    const payload = JSON.parse(rawPayload) as { userId?: number }
-    if (typeof payload.userId === "number") {
-      for (const handler of state.handlers) {
-        handler(payload.userId)
-      }
-    }
+    payload = JSON.parse(rawPayload) as { userId?: unknown }
   } catch {
     logger.warn("ignoring malformed payload on todos_changed channel")
+    return
+  }
+
+  const userId = payload.userId
+  if (typeof userId !== "number") {
+    return
+  }
+
+  for (const handler of state.handlers) {
+    try {
+      handler(userId)
+    } catch (error) {
+      logger.error({ err: error }, "todo change handler failed")
+    }
   }
 }
 
@@ -66,30 +78,43 @@ function scheduleReconnect(state: ListenerState): void {
   }, reconnectDelayMs)
 }
 
-async function ensureConnected(state: ListenerState): Promise<void> {
-  if (state.client || state.connecting) {
-    return
-  }
-  state.connecting = true
+async function connect(state: ListenerState): Promise<void> {
   const client = new Client({ connectionString: getEnv().DATABASE_URL })
+
+  const handleDisconnect = (error?: Error): void => {
+    if (state.client !== client) {
+      return
+    }
+    logger.error({ err: error }, "todos listener lost database connection")
+    discardClient(state, client)
+    scheduleReconnect(state)
+  }
+
   try {
     await client.connect()
     client.on("notification", (message) =>
       handleNotification(state, message.payload),
     )
-    client.on("error", (error) => {
-      logger.error({ err: error }, "todos listener lost database connection")
-      discardClient(state, client)
-      scheduleReconnect(state)
-    })
-    await client.query("listen todos_changed")
+    client.on("error", handleDisconnect)
+    client.on("end", () => handleDisconnect())
+    await client.query(`listen ${channel}`)
     state.client = client
   } catch (error) {
     discardClient(state, client)
     throw error
-  } finally {
-    state.connecting = false
   }
+}
+
+async function ensureConnected(state: ListenerState): Promise<void> {
+  if (state.client) {
+    return
+  }
+  if (!state.connectionPromise) {
+    state.connectionPromise = connect(state).finally(() => {
+      state.connectionPromise = null
+    })
+  }
+  await state.connectionPromise
 }
 
 export async function subscribeTodoChanges(
@@ -115,6 +140,12 @@ export async function closeTodosListener(): Promise<void> {
     state.reconnectTimer = null
   }
   state.handlers.clear()
+
+  try {
+    await state.connectionPromise
+  } catch {
+    return
+  }
 
   const client = state.client
   state.client = null

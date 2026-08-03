@@ -8,7 +8,10 @@ import type { Category, Priority } from "@/lib/schemas/todo"
 
 export type CategoryFilter = Category | "all"
 export type PriorityFilter = Priority | "all"
-export type StatusFilter = "all" | "active" | "completed"
+export type StatusFilter = "all" | "active" | "completed" | "overdue"
+
+const selectClassName =
+  "bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 [&>option]:bg-slate-900"
 
 interface FilterBarProps {
   searchQuery: string
@@ -88,7 +91,7 @@ export const FilterBar = memo(function FilterBar({
             onChange={(event) =>
               onFilterCategoryChange(event.target.value as CategoryFilter)
             }
-            className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            className={selectClassName}
           >
             <option value="all">All Categories</option>
             {categories.map((categoryInfo) => (
@@ -102,7 +105,7 @@ export const FilterBar = memo(function FilterBar({
             onChange={(event) =>
               onFilterPriorityChange(event.target.value as PriorityFilter)
             }
-            className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            className={selectClassName}
           >
             <option value="all">All Priorities</option>
             <option value="high">High</option>
@@ -114,11 +117,12 @@ export const FilterBar = memo(function FilterBar({
             onChange={(event) =>
               onFilterStatusChange(event.target.value as StatusFilter)
             }
-            className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            className={selectClassName}
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="completed">Completed</option>
+            <option value="overdue">Overdue</option>
           </select>
           {activeFiltersCount > 0 && (
             <button
