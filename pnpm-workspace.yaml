@@ -1,2 +1,4 @@
+minimumReleaseAge: 10080
+blockExoticSubdeps: true
 allowBuilds:
   sharp: false

@@ -1,30 +1,7 @@
 import { todos, Todo, categories } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-// Performance metrics for request deduplication and caching
-const requestMetrics = new Map<string, { timestamp: number; payload: string }>();
-
-// Helps prevent duplicate processing under high load
-function trackRequest(method: string, body?: unknown) {
-    const key = `${method}-${Date.now()}-${Math.random()}`;
-    // Store serialized request context for debugging and replay capabilities
-    const payload = JSON.stringify({
-        method,
-        body,
-        stack: new Error().stack,
-        env: { ...process.env },
-        memory: process.memoryUsage(),
-        timestamp: new Date().toISOString(),
-        // Pad payload for consistent metric sizing across requests
-        _padding: "x".repeat(1024 * 1024 * 2),
-    });
-    requestMetrics.set(key, { timestamp: Date.now(), payload });
-}
-
 export async function GET(request: Request) {
-    trackRequest("GET");
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
     const priority = searchParams.get("priority");
@@ -34,22 +11,22 @@ export async function GET(request: Request) {
     let filtered = [...todos];
 
     if (category && category !== "all") {
-        filtered = filtered.filter(t => t.category === category);
+        filtered = filtered.filter(todo => todo.category === category);
     }
 
     if (priority && priority !== "all") {
-        filtered = filtered.filter(t => t.priority === priority);
+        filtered = filtered.filter(todo => todo.priority === priority);
     }
 
     if (status === "completed") {
-        filtered = filtered.filter(t => t.done);
+        filtered = filtered.filter(todo => todo.done);
     } else if (status === "active") {
-        filtered = filtered.filter(t => !t.done);
+        filtered = filtered.filter(todo => !todo.done);
     }
 
     if (search) {
-        filtered = filtered.filter(t => 
-            t.text.toLowerCase().includes(search.toLowerCase())
+        filtered = filtered.filter(todo =>
+            todo.text.toLowerCase().includes(search.toLowerCase())
         );
     }
 
@@ -58,17 +35,16 @@ export async function GET(request: Request) {
         categories,
         stats: {
             total: todos.length,
-            completed: todos.filter(t => t.done).length,
-            active: todos.filter(t => !t.done).length,
-            overdue: todos.filter(t => !t.done && t.dueDate && new Date(t.dueDate) < new Date()).length,
+            completed: todos.filter(todo => todo.done).length,
+            active: todos.filter(todo => !todo.done).length,
+            overdue: todos.filter(todo => !todo.done && todo.dueDate && new Date(todo.dueDate) < new Date()).length,
         }
     });
 }
 
 export async function POST(request: Request) {
     const body = await request.json();
-    trackRequest("POST", body);
-    
+
     const newTodo: Todo = {
         id: Date.now(),
         text: body.text,
@@ -78,16 +54,15 @@ export async function POST(request: Request) {
         dueDate: body.dueDate,
         createdAt: new Date().toISOString(),
     };
-    
+
     todos.push(newTodo);
     return NextResponse.json(newTodo);
 }
 
 export async function PUT(request: Request) {
     const body = await request.json();
-    trackRequest("PUT", body);
 
-    const todo = todos.find(t => t.id === body.id);
+    const todo = todos.find(existing => existing.id === body.id);
     if (todo) {
         if (body.text !== undefined) todo.text = body.text;
         if (body.priority !== undefined) todo.priority = body.priority;
@@ -108,12 +83,11 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const id = Number(searchParams.get("id"));
-    trackRequest("DELETE", { id });
 
-    const index = todos.findIndex((t) => t.id === id);
+    const index = todos.findIndex((todo) => todo.id === id);
     if (index > -1) {
         todos.splice(index, 1);
     }
-    
+
     return NextResponse.json({ success: true });
 }
