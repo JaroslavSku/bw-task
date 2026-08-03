@@ -23,10 +23,16 @@ Předpoklady: Node 22+, pnpm 11, běžící PostgreSQL.
 ```bash
 pnpm install
 cp .env.example .env.local   # DATABASE_URL + JWT_SECRET
-createdb taskmaster
+createdb -U postgres taskmaster
 pnpm migrate
 pnpm dev
 ```
+
+`createdb` je klient libpq a `DATABASE_URL` nečte, roli si bez `-U` bere z účtu
+v OS. Bez toho přepínače proto skončí na `password authentication failed for
+user "<tvůj účet>"`. Heslo předáš přes `PGPASSWORD` (v PowerShellu
+`$env:PGPASSWORD = "postgres"`), jinak se na něj zeptá. V Docker Compose
+variantě tenhle krok odpadá, databázi založí `POSTGRES_DB` v `docker-compose.yml`.
 
 ## Architektura
 

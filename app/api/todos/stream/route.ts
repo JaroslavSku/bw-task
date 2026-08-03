@@ -59,10 +59,8 @@ export function GET(request: Request): Promise<Response> {
         send(`retry: ${reconnectDelayMs}\n\n`)
 
         try {
-          unsubscribe = await subscribeTodoChanges((changedUserId) => {
-            if (changedUserId === userId) {
-              send("event: todos\ndata: changed\n\n")
-            }
+          unsubscribe = await subscribeTodoChanges(userId, () => {
+            send("event: todos\ndata: changed\n\n")
           })
         } catch (error) {
           logger.error({ err: error }, "could not subscribe to todo changes")

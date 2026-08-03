@@ -2,11 +2,11 @@ import { Client } from "pg"
 import { getEnv } from "@/lib/env"
 import { logger } from "@/lib/logger"
 
-type ChangeHandler = (userId: number) => void
+type ChangeHandler = () => void
 
 interface ListenerState {
   client: Client | null
-  handlers: Set<ChangeHandler>
+  handlers: Map<number, Set<ChangeHandler>>
   connectionPromise: Promise<void> | null
   reconnectTimer: ReturnType<typeof setTimeout> | null
 }
@@ -20,7 +20,7 @@ function getListenerState(): ListenerState {
   if (!globalScope.todosListener) {
     globalScope.todosListener = {
       client: null,
-      handlers: new Set(),
+      handlers: new Map(),
       connectionPromise: null,
       reconnectTimer: null,
     }
@@ -49,9 +49,14 @@ function handleNotification(
     return
   }
 
-  for (const handler of state.handlers) {
+  const handlers = state.handlers.get(userId)
+  if (!handlers) {
+    return
+  }
+
+  for (const handler of handlers) {
     try {
-      handler(userId)
+      handler()
     } catch (error) {
       logger.error({ err: error }, "todo change handler failed")
     }
@@ -136,19 +141,48 @@ async function ensureConnected(state: ListenerState): Promise<void> {
   await state.connectionPromise
 }
 
+function addHandler(
+  state: ListenerState,
+  userId: number,
+  handler: ChangeHandler,
+): void {
+  const existing = state.handlers.get(userId)
+  if (existing) {
+    existing.add(handler)
+    return
+  }
+  state.handlers.set(userId, new Set([handler]))
+}
+
+function removeHandler(
+  state: ListenerState,
+  userId: number,
+  handler: ChangeHandler,
+): void {
+  const handlers = state.handlers.get(userId)
+  if (!handlers) {
+    return
+  }
+  handlers.delete(handler)
+  if (handlers.size === 0) {
+    state.handlers.delete(userId)
+  }
+}
+
 export async function subscribeTodoChanges(
+  userId: number,
   handler: ChangeHandler,
 ): Promise<() => void> {
   const state = getListenerState()
-  state.handlers.add(handler)
+  addHandler(state, userId, handler)
   try {
     await ensureConnected(state)
   } catch (error) {
-    state.handlers.delete(handler)
+    removeHandler(state, userId, handler)
     throw error
   }
   return () => {
-    state.handlers.delete(handler)
+    removeHandler(state, userId, handler)
   }
 }
 
