@@ -195,7 +195,7 @@ export const TodoItem = memo(function TodoItem({
           }
           onClick={(event) => event.stopPropagation()}
           disabled={pending}
-          className="bg-white/10 border-0 rounded text-xs py-1 px-1 focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer disabled:cursor-not-allowed"
+          className="bg-white/10 border-0 rounded text-xs py-1 px-1 focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer disabled:cursor-not-allowed [&>option]:bg-muted [&>option]:text-foreground"
         >
           <option value="low">Low</option>
           <option value="medium">Med</option>

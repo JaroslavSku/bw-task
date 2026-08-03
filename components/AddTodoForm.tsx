@@ -62,7 +62,7 @@ export const AddTodoForm = memo(function AddTodoForm({
         <select
           value={category}
           onChange={(event) => setCategory(event.target.value as Category)}
-          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 [&>option]:bg-muted [&>option]:text-foreground"
         >
           {categories.map((categoryInfo) => (
             <option key={categoryInfo.id} value={categoryInfo.id}>
@@ -73,7 +73,7 @@ export const AddTodoForm = memo(function AddTodoForm({
         <select
           value={priority}
           onChange={(event) => setPriority(event.target.value as Priority)}
-          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 [&>option]:bg-muted [&>option]:text-foreground"
         >
           <option value="low">Low Priority</option>
           <option value="medium">Medium Priority</option>
@@ -83,7 +83,7 @@ export const AddTodoForm = memo(function AddTodoForm({
           type="date"
           value={dueDate}
           onChange={(event) => setDueDate(event.target.value)}
-          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 [&>option]:bg-muted [&>option]:text-foreground"
         />
       </div>
       <div className="flex gap-2">
