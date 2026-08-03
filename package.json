@@ -2,25 +2,45 @@
   "name": "fullstack-assignment",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "migrate": "node --env-file-if-exists=.env.local --env-file-if-exists=.env node_modules/db-migrate/bin/db-migrate up"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
+    "db-migrate": "^0.11.14",
+    "db-migrate-pg": "^1.5.2",
+    "jose": "^6.2.4",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
+    "pg": "^8.22.0",
+    "pino": "^10.3.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.23",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.12",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
-    "typescript": "^5.9.3"
-  }}
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
