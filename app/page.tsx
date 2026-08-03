@@ -20,6 +20,14 @@ import type { TodoStats, TodosResponse } from "@/lib/types"
 const emptyStats: TodoStats = { total: 0, completed: 0, active: 0, overdue: 0 }
 const jsonHeaders = { "Content-Type": "application/json" }
 
+const streamStatus = {
+  connecting: { label: "Connecting", className: "text-amber-400" },
+  online: { label: "Online", className: "text-green-400" },
+  offline: { label: "Offline", className: "text-red-400" },
+}
+
+type StreamState = keyof typeof streamStatus
+
 export default function Home() {
   const router = useRouter()
 
@@ -29,6 +37,7 @@ export default function Home() {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" })
   const [actionError, setActionError] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [streamState, setStreamState] = useState<StreamState>("connecting")
 
   const [showForm, setShowForm] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
@@ -108,12 +117,21 @@ export default function Home() {
     let connectedBefore = false
 
     source.addEventListener("open", () => {
+      setStreamState("online")
       if (connectedBefore) {
         requestRefresh()
       }
       connectedBefore = true
     })
     source.addEventListener("todos", requestRefresh)
+    source.addEventListener("error", () => {
+      if (source.readyState === EventSource.CLOSED) {
+        setStreamState("offline")
+        requestRefresh()
+        return
+      }
+      setStreamState("connecting")
+    })
 
     return () => source.close()
   }, [requestRefresh])
@@ -369,7 +387,9 @@ export default function Home() {
             <span className="text-white/20">•</span>
             <span>{userEmail ?? "..."}</span>
             <span className="text-white/20">•</span>
-            <span className="text-green-400">● Online</span>
+            <span className={streamStatus[streamState].className}>
+              ● {streamStatus[streamState].label}
+            </span>
           </div>
         </div>
       </div>
