@@ -141,11 +141,7 @@ export async function closeTodosListener(): Promise<void> {
   }
   state.handlers.clear()
 
-  try {
-    await state.connectionPromise
-  } catch {
-    return
-  }
+  await state.connectionPromise?.catch(() => undefined)
 
   const client = state.client
   state.client = null
