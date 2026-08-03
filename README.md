@@ -131,10 +131,17 @@ migrations/             db-migrate (čisté SQL v migrations/sqls)
 - **`terraform/`** — Hetzner VM (cx23, Ubuntu 24.04) s firewallem (SSH jen z mé IP,
   HTTP veřejné). Cloud-init nainstaluje Docker a spustí compose stack z ghcr image.
 
-```bash
+Proměnné se nepíší do souboru, ale předávají přes `TF_VAR_*` proměnné prostředí
+(nic tajného tak neleží natrvalo na disku):
+
+```powershell
 cd terraform
-cp terraform.tfvars.example terraform.tfvars   # doplnit hodnoty
-tofu init && tofu apply
+$env:TF_VAR_hcloud_token      = "..."
+$env:TF_VAR_my_ip             = (curl.exe -s ifconfig.me)
+$env:TF_VAR_postgres_password = "..."
+$env:TF_VAR_jwt_secret        = "..."   # min. 32 znaku
+tofu init
+tofu apply
 ```
 
 Deployment nové verze na VM: `docker compose pull && docker compose up -d`
