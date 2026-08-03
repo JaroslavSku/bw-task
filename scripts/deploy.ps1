@@ -35,3 +35,4 @@ while ($true) {
 }
 
 ssh $target "docker inspect taskmaster-app-1 --format 'App kontejner vytvoren: {{.Created}}'"
+exit 0

@@ -83,7 +83,7 @@ export const AddTodoForm = memo(function AddTodoForm({
           type="date"
           value={dueDate}
           onChange={(event) => setDueDate(event.target.value)}
-          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 [&>option]:bg-muted [&>option]:text-foreground"
+          className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
         />
       </div>
       <div className="flex gap-2">
