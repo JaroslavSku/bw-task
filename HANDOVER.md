@@ -74,11 +74,6 @@ vložit do iframu.
 
 **Odhad:** 15 min na první krok, 3-4 h na CSP
 
-**Pozor na:** CSP nezaváděj naslepo. Next.js používá inline skripty, takže bez
-nastavení nonce si snadno rozbiješ funkční aplikaci. Nasazuj nejdřív v režimu
-`Content-Security-Policy-Report-Only` a teprve po vyčištění hlášení přepni na
-ostrou.
-
 ---
 
 ## [P1] Index pro fulltextové hledání (pg_trgm)
