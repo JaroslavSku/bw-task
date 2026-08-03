@@ -10,37 +10,67 @@ kontextu. U každé je uvedeno, co už v projektu je a na co si dát pozor.
 Aplikace  na `https://taskmaster.sportagio.app` — Caddy jako reverse proxy
 (image `caddy:2-alpine`, porty 80+443) s automatickým Let's Encrypt certifikátem
 
-**Pozor na jednu věc při dalších změnách:** `terraform/cloud-init.yaml.tftpl`
-je zdroj pravdy pro `tofu apply` from scratch, ale změna `user_data` u
-`hcloud_server` vynucuje **znovuvytvoření serveru** (nová IP, DNS by se musel
-přesměrovat znovu). Caddy byl proto na již běžící VM nasazený ručně přes SSH
-(`/opt/taskmaster/docker-compose.yml` a `/opt/taskmaster/Caddyfile` na serveru),
-zatímco `cloud-init.yaml.tftpl` v repu je zaktualizovaný pro budoucí čisté
-nasazení. Terraform state proto ukazuje „pending replace" na `hcloud_server.taskmaster`
-(rozdíl v `user_data`) — nespouštěj plný `tofu apply` bez `-target`, dokud
-nechceš server skutečně přetvořit s novou IP.
+**Kontext pro navazující práci:** cloud-init běží jen při prvním bootu, takže
+`user_data` je bootstrap, ne správa konfigurace. Caddy byl proto na běžící VM
+nasazený ručně přes SSH (`/opt/taskmaster/docker-compose.yml` a `Caddyfile`),
+zatímco `cloud-init.yaml.tftpl` v repu je připravený pro čisté nasazení. Ty dvě
+verze se rozešly a na existujícím serveru se šablona z repa už neprojeví.
 
-**Zbývá:** SSE přes reverse proxy zatím nikdo neotestoval dlouhodobě — Caddy
-streamované odpovědi nebufferuje ve výchozím stavu, ale stálo by za to nechat
-otevřené dvě okna přes doménu pár hodin a ověřit, že realtime nepřestane chodit.
+Aby z toho Terraform nechtěl server přetvořit (a smazat volume `db-data` se
+všemi daty), má `hcloud_server` v `terraform/server.tf` `lifecycle` blok
+s `ignore_changes = [user_data]` a `prevent_destroy = true`. Až budeš chtít
+server legitimně zrušit, smaž `prevent_destroy` a teprve pak `tofu destroy`.
+
+---
+
+## [P2] Osekat cloud-init na bootstrap a oddělit data od serveru
+
+**Kontext:** `cloud-init.yaml.tftpl` obsahuje celý aplikační stack — compose,
+Caddyfile i secrety. Každá aplikační změna je tím formálně infrastrukturní.
+Data Postgresu navíc leží v docker volume na disku serveru, takže zánik
+serveru = ztráta dat.
+
+**Úkol:** Osekej cloud-init na „nainstaluj Docker, stáhni compose, spusť";
+compose i Caddyfile drž v repu a dostávej je na server přes `scripts/deploy.sh`.
+Přidej `hcloud_volume` pro data Postgresu a `hcloud_floating_ip`, ať výměna
+serveru neznamená ztrátu dat ani přepis DNS.
+
+**Hotovo, když:** aplikační změna jde na server bez sáhnutí na Terraform
+a přetvoření serveru nezpůsobí ztrátu dat.
+
+**Odhad:** 4–6 h
+**Pozor na:** přesun dat na `hcloud_volume` znamená odstávku — nejdřív
+`pg_dump`, teprve pak přepínej.
+
+---
+
+## [P3] Ověřit SSE přes Caddy dlouhodobě
+
+**Kontext:** Caddy streamované odpovědi ve výchozím stavu nebufferuje, takže
+SSE přes proxy funguje. Ověřené je to ale jen krátkodobě.
+
+**Úkol:** Nech dvě okna otevřená na doméně několik hodin a sleduj, jestli
+realtime nepřestane chodit. Když ano, hledej idle timeouty v Caddy nebo
+zkrať heartbeat (25 s v `app/api/todos/stream/route.ts`).
+
+**Hotovo, když:** změna v jednom okně se po hodinách provozu pořád objeví
+v druhém do sekundy.
+
+**Odhad:** 1 h + čekání
 
 ---
 
 ## [P1] Rate limiting na auth endpointy
 
-**Kontext:** `/api/auth/login` a `/api/auth/register` nejsou nijak omezené —
-lze zkoušet hesla neomezenou rychlostí. bcrypt lámání brzdí (~100 ms/pokus),
-ale online bruteforce je pořád možný.
+**Kontext:** `/api/auth/login` a `/api/auth/register` nejsou nijak omezené 
 
 **Úkol:** Do obou handlerů přidej limit na IP (např. 10 pokusů za minutu).
-Pro jednu instanci stačí in-memory mapa `ip → časy pokusů` s úklidem starých
-záznamů; pro víc instancí je potřeba sdílené úložiště (Redis, nebo tabulka
-v Postgresu s `created_at` indexem).
+Pro jednu instanci stačí in-memory mapa jinak Redis.
 
 **Hotovo, když:** 11. pokus během minuty vrátí 429 s hlavičkou `Retry-After`,
 test to pokrývá.
 
-**Odhad:** 3–4 h
+**Odhad:** 1 h
 **Pozor na:** za reverse proxy čti IP z `X-Forwarded-For` (první hodnota),
 jinak limitneš proxy místo útočníka.
 
@@ -51,15 +81,12 @@ jinak limitneš proxy místo útočníka.
 **Kontext:** Postgres běží v kontejneru s volume `db-data` na jediné VM.
 Když VM umře, data jsou pryč.
 
-**Úkol:** Cron na VM: `docker compose exec -T db pg_dump -U postgres taskmaster
-| gzip > /backup/taskmaster-$(date +%F).sql.gz`, rotace 14 dní, upload mimo VM
-(Hetzner Storage Box nebo S3). Jednou za čas restore test.
+**Úkol:** Cron na VM: pg_dump, lépe mimo naše VM tedy třeba CloudFlare R2.
 
 **Hotovo, když:** záloha vzniká denně, leží mimo VM a existuje ověřený postup
 obnovy (dokumentovaný v README).
 
 **Odhad:** 3 h
-**Pozor na:** zálohu, kterou nikdo nikdy nezkusil obnovit, nelze počítat za zálohu.
 
 ---
 
@@ -67,11 +94,9 @@ obnovy (dokumentovaný v README).
 
 **Kontext:** Existuje `/api/health` (ověřuje i spojení do DB) a strukturované
 pino logy na stdout (`docker compose logs app`). Nikdo se ale nedozví, když
-aplikace spadne.
+aplikace umře.
 
-**Úkol:** Minimálně: externí uptime check na `/api/health` (UptimeRobot apod.)
-s notifikací. Lépe: `docker stats` → node_exporter + Prometheus + Grafana,
-alert na paměť > 80 % a error rate v lozích.
+**Úkol:** Instalace .
 
 **Hotovo, když:** výpadek aplikace nebo DB pošle notifikaci do 5 minut.
 

@@ -11,6 +11,11 @@ resource "hcloud_server" "taskmaster" {
     jwt_secret        = var.jwt_secret
     domain            = var.domain
   })
+
+  lifecycle {
+    ignore_changes  = [user_data]
+    prevent_destroy = true
+  }
 }
 
 output "server_ip" {
