@@ -62,7 +62,7 @@ export const FilterBar = memo(function FilterBar({
             "flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all",
             showFilters || activeFiltersCount > 0
               ? "bg-violet-500/20 border-violet-500/50 text-violet-300"
-              : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10"
+              : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10",
           )}
         >
           <Filter className="w-4 h-4" />
@@ -85,7 +85,9 @@ export const FilterBar = memo(function FilterBar({
         <div className="flex flex-wrap gap-2 p-4 bg-white/5 rounded-xl border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200">
           <select
             value={filterCategory}
-            onChange={(event) => onFilterCategoryChange(event.target.value as CategoryFilter)}
+            onChange={(event) =>
+              onFilterCategoryChange(event.target.value as CategoryFilter)
+            }
             className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
           >
             <option value="all">All Categories</option>
@@ -97,7 +99,9 @@ export const FilterBar = memo(function FilterBar({
           </select>
           <select
             value={filterPriority}
-            onChange={(event) => onFilterPriorityChange(event.target.value as PriorityFilter)}
+            onChange={(event) =>
+              onFilterPriorityChange(event.target.value as PriorityFilter)
+            }
             className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
           >
             <option value="all">All Priorities</option>
@@ -107,7 +111,9 @@ export const FilterBar = memo(function FilterBar({
           </select>
           <select
             value={filterStatus}
-            onChange={(event) => onFilterStatusChange(event.target.value as StatusFilter)}
+            onChange={(event) =>
+              onFilterStatusChange(event.target.value as StatusFilter)
+            }
             className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
           >
             <option value="all">All Status</option>

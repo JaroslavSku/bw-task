@@ -4,7 +4,12 @@ import { LogOut, Sparkles, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AddTodoForm, type NewTodoInput } from "@/components/AddTodoForm"
-import { FilterBar, type CategoryFilter, type PriorityFilter, type StatusFilter } from "@/components/FilterBar"
+import {
+  FilterBar,
+  type CategoryFilter,
+  type PriorityFilter,
+  type StatusFilter,
+} from "@/components/FilterBar"
 import { StatsBar } from "@/components/StatsBar"
 import { TodoList, type LoadState } from "@/components/TodoList"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"
@@ -74,12 +79,22 @@ export default function Home() {
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setLoadState({ status: "error", message: "Could not load tasks. Please try again." })
+          setLoadState({
+            status: "error",
+            message: "Could not load tasks. Please try again.",
+          })
         }
       })
 
     return () => controller.abort()
-  }, [filterCategory, filterPriority, filterStatus, debouncedSearch, refreshCounter, router])
+  }, [
+    filterCategory,
+    filterPriority,
+    filterStatus,
+    debouncedSearch,
+    refreshCounter,
+    router,
+  ])
 
   const requestRefresh = useCallback(() => {
     setRefreshCounter((current) => current + 1)
@@ -143,7 +158,12 @@ export default function Home() {
       }
       runTodoAction(
         (todos) => [optimisticTodo, ...todos],
-        () => fetch("/api/todos", { method: "POST", headers: jsonHeaders, body: JSON.stringify(input) }),
+        () =>
+          fetch("/api/todos", {
+            method: "POST",
+            headers: jsonHeaders,
+            body: JSON.stringify(input),
+          }),
         "Failed to add the task.",
       )
     },
@@ -153,8 +173,16 @@ export default function Home() {
   const patchTodo = useCallback(
     (todoId: number, patch: Partial<Todo>, errorMessage: string) => {
       runTodoAction(
-        (todos) => todos.map((todo) => (todo.id === todoId ? { ...todo, ...patch } : todo)),
-        () => fetch(`/api/todos/${todoId}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(patch) }),
+        (todos) =>
+          todos.map((todo) =>
+            todo.id === todoId ? { ...todo, ...patch } : todo,
+          ),
+        () =>
+          fetch(`/api/todos/${todoId}`, {
+            method: "PATCH",
+            headers: jsonHeaders,
+            body: JSON.stringify(patch),
+          }),
         errorMessage,
       )
     },
@@ -200,7 +228,10 @@ export default function Home() {
     setSearchQuery("")
   }, [])
 
-  const toggleFilters = useCallback(() => setShowFilters((current) => !current), [])
+  const toggleFilters = useCallback(
+    () => setShowFilters((current) => !current),
+    [],
+  )
   const toggleForm = useCallback(() => setShowForm((current) => !current), [])
   const hideForm = useCallback(() => setShowForm(false), [])
   const retryFetch = useCallback(() => {

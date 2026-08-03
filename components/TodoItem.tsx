@@ -6,7 +6,10 @@ import { cn } from "@/lib/utils"
 import type { CategoryInfo } from "@/lib/categories"
 import type { Priority, Todo } from "@/lib/schemas/todo"
 
-const priorityConfig: Record<Priority, { label: string; color: string; bg: string }> = {
+const priorityConfig: Record<
+  Priority,
+  { label: string; color: string; bg: string }
+> = {
   low: { label: "Low", color: "text-slate-400", bg: "bg-slate-400/10" },
   medium: { label: "Medium", color: "text-yellow-400", bg: "bg-yellow-400/10" },
   high: { label: "High", color: "text-red-400", bg: "bg-red-400/10" },
@@ -48,7 +51,9 @@ export const TodoItem = memo(function TodoItem({
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(todo.text)
 
-  const categoryInfo = categories.find((candidate) => candidate.id === todo.category)
+  const categoryInfo = categories.find(
+    (candidate) => candidate.id === todo.category,
+  )
   const categoryColor = categoryInfo?.color ?? "#6b7280"
   const overdue = isOverdue(todo)
 
@@ -72,7 +77,7 @@ export const TodoItem = memo(function TodoItem({
         "group relative flex items-start gap-3 p-4 rounded-xl border transition-all duration-200",
         overdue
           ? "bg-red-500/10 border-red-500/30"
-          : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20"
+          : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20",
       )}
     >
       <button
@@ -81,7 +86,7 @@ export const TodoItem = memo(function TodoItem({
           "flex-shrink-0 mt-0.5 flex items-center justify-center w-5 h-5 rounded-full border-2 transition-all duration-300",
           todo.done
             ? "bg-green-500 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]"
-            : "border-muted-foreground hover:border-white"
+            : "border-muted-foreground hover:border-white",
         )}
       >
         {todo.done && <Check className="w-3 h-3 text-white" strokeWidth={4} />}
@@ -120,7 +125,7 @@ export const TodoItem = memo(function TodoItem({
                 "text-sm font-medium cursor-pointer transition-colors",
                 todo.done
                   ? "text-muted-foreground line-through decoration-white/20"
-                  : "text-foreground hover:text-violet-300"
+                  : "text-foreground hover:text-violet-300",
               )}
             >
               {todo.text}
@@ -128,7 +133,10 @@ export const TodoItem = memo(function TodoItem({
             <div className="flex flex-wrap items-center gap-2 mt-1.5">
               <span
                 className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: `${categoryColor}20`, color: categoryColor }}
+                style={{
+                  backgroundColor: `${categoryColor}20`,
+                  color: categoryColor,
+                }}
               >
                 <Tag className="w-3 h-3" />
                 {categoryInfo?.label ?? todo.category}
@@ -138,7 +146,7 @@ export const TodoItem = memo(function TodoItem({
                 className={cn(
                   "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full",
                   priorityConfig[todo.priority].bg,
-                  priorityConfig[todo.priority].color
+                  priorityConfig[todo.priority].color,
                 )}
               >
                 {priorityConfig[todo.priority].label}
@@ -148,7 +156,7 @@ export const TodoItem = memo(function TodoItem({
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 text-xs",
-                    overdue ? "text-red-400" : "text-muted-foreground"
+                    overdue ? "text-red-400" : "text-muted-foreground",
                   )}
                 >
                   {overdue ? (
@@ -167,7 +175,9 @@ export const TodoItem = memo(function TodoItem({
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <select
           value={todo.priority}
-          onChange={(event) => onChangePriority(todo.id, event.target.value as Priority)}
+          onChange={(event) =>
+            onChangePriority(todo.id, event.target.value as Priority)
+          }
           onClick={(event) => event.stopPropagation()}
           className="bg-white/10 border-0 rounded text-xs py-1 px-1 focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer"
         >

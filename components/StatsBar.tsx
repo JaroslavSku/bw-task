@@ -17,7 +17,7 @@ export const StatsBar = memo(function StatsBar({ stats }: StatsBarProps) {
 
   return (
     <div className="grid grid-cols-4 gap-3 mb-6">
-      {tiles.map(tile => (
+      {tiles.map((tile) => (
         <div
           key={tile.label}
           className="bg-white/5 rounded-xl p-3 text-center border border-white/5"

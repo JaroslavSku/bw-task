@@ -72,7 +72,7 @@ export default function LoginPage() {
                   "py-2 rounded-lg text-sm font-medium transition-all",
                   mode === candidate
                     ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20"
-                    : "text-muted-foreground hover:text-white"
+                    : "text-muted-foreground hover:text-white",
                 )}
               >
                 {candidate === "login" ? "Sign in" : "Sign up"}
@@ -97,7 +97,9 @@ export default function LoginPage() {
               placeholder="Password (min. 8 characters)"
               required
               minLength={8}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              autoComplete={
+                mode === "login" ? "current-password" : "new-password"
+              }
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
             />
 
