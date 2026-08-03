@@ -71,8 +71,6 @@ Původní kód obsahoval nastražené chyby. Nejdůležitější nálezy, ověř
 | 50 spojení, 15 s | **pád serveru** (~23k chyb) | **0 chyb**, 386 req/s |
 | Paměť pod zátěží | +4,2 MB/request, trvale | stabilní ~250 MB |
 
-Postup měření je popsaný v `docs/how-to-use-autocannon.html`.
-
 ## Architektura
 
 ```
