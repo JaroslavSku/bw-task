@@ -126,6 +126,28 @@ nebo infinite scroll.
 
 ---
 
+## [P3] Řazení úkolů
+
+**Kontext:** Řadí se napevno `order by created_at desc, id desc`
+(`lib/repositories/todos.ts`), uživatel to nemůže změnit.
+
+**Úkol:** Přidej `sort` do `todoFiltersSchema` (termín, priorita, název, vytvoření)
+a select do FilterBaru. Volitelně vlastní pořadí přes sloupec `position`
+a drag and drop.
+
+**Hotovo, když:** uživatel si seznam seřadí podle termínu a volba mu vydrží
+i po refetchi.
+
+**Odhad:** 4 h (vlastní pořadí s drag and drop spíš 1 den)
+
+**Pozor na:** priorita je text s hodnotami `low`/`medium`/`high`, takže abecedně
+by vyšlo high, low, medium. Potřebuje `case` v `order by` nebo vlastní enum typ.
+Index `todos_user_created_idx` pokrývá jen řazení podle `created_at`, na řazení
+podle `due_date` je potřeba další index, jinak to u velkých seznamů bude sekvenční
+scan a sort.
+
+---
+
 ## [P2] Refresh token
 
 **Kontext:** Jeden JWT s platností 7 dní (`lib/auth/session.ts`). Odhlášení smaže
