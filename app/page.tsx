@@ -59,8 +59,11 @@ export default function Home() {
     if (filterStatus !== "all") params.set("status", filterStatus)
     if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim())
 
-    fetch(`/api/todos?${params}`, { signal: controller.signal })
-      .then(async (response) => {
+    const loadTodos = async () => {
+      try {
+        const response = await fetch(`/api/todos?${params}`, {
+          signal: controller.signal,
+        })
         if (response.status === 401) {
           router.push("/login")
           return
@@ -74,15 +77,17 @@ export default function Home() {
         setCategories(data.categories)
         setStats(data.stats)
         setLoadState({ status: "ready" })
-      })
-      .catch(() => {
+      } catch {
         if (!controller.signal.aborted) {
           setLoadState({
             status: "error",
             message: "Could not load tasks. Please try again.",
           })
         }
-      })
+      }
+    }
+
+    void loadTodos()
 
     return () => controller.abort()
   }, [
@@ -114,12 +119,20 @@ export default function Home() {
   }, [requestRefresh])
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { email: string } | null) => {
-        if (data) setUserEmail(data.email)
-      })
-      .catch(() => undefined)
+    const loadUserEmail = async () => {
+      try {
+        const response = await fetch("/api/auth/me")
+        if (!response.ok) {
+          return
+        }
+        const data: { email: string } = await response.json()
+        setUserEmail(data.email)
+      } catch {
+        return
+      }
+    }
+
+    void loadUserEmail()
   }, [])
 
   const logout = async () => {

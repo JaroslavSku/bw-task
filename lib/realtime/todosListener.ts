@@ -58,23 +58,35 @@ function handleNotification(
   }
 }
 
+async function endClient(client: Client): Promise<void> {
+  try {
+    await client.end()
+  } catch {
+    return
+  }
+}
+
 function discardClient(state: ListenerState, client: Client): void {
   if (state.client === client) {
     state.client = null
   }
-  client.end().catch(() => undefined)
+  void endClient(client)
 }
 
 function scheduleReconnect(state: ListenerState): void {
   if (state.reconnectTimer || state.handlers.size === 0) {
     return
   }
-  state.reconnectTimer = setTimeout(() => {
+  state.reconnectTimer = setTimeout(async () => {
     state.reconnectTimer = null
     if (state.handlers.size === 0) {
       return
     }
-    ensureConnected(state).catch(() => scheduleReconnect(state))
+    try {
+      await ensureConnected(state)
+    } catch {
+      scheduleReconnect(state)
+    }
   }, reconnectDelayMs)
 }
 
@@ -105,14 +117,20 @@ async function connect(state: ListenerState): Promise<void> {
   }
 }
 
+async function connectAndClear(state: ListenerState): Promise<void> {
+  try {
+    await connect(state)
+  } finally {
+    state.connectionPromise = null
+  }
+}
+
 async function ensureConnected(state: ListenerState): Promise<void> {
   if (state.client) {
     return
   }
   if (!state.connectionPromise) {
-    state.connectionPromise = connect(state).finally(() => {
-      state.connectionPromise = null
-    })
+    state.connectionPromise = connectAndClear(state)
   }
   await state.connectionPromise
 }
@@ -141,7 +159,11 @@ export async function closeTodosListener(): Promise<void> {
   }
   state.handlers.clear()
 
-  await state.connectionPromise?.catch(() => undefined)
+  try {
+    await state.connectionPromise
+  } catch {
+    return
+  }
 
   const client = state.client
   state.client = null

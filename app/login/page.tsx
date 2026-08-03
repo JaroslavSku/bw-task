@@ -29,7 +29,12 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
       if (!response.ok) {
-        const body = await response.json().catch(() => null)
+        let body: { error?: string } | null = null
+        try {
+          body = await response.json()
+        } catch {
+          body = null
+        }
         setError(body?.error ?? "Something went wrong, please try again.")
         return
       }
