@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Sparkles } from "lucide-react"
+import { Eye, EyeOff, Loader2, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -28,7 +29,12 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
       if (!response.ok) {
-        const body = await response.json().catch(() => null)
+        let body: { error?: string } | null = null
+        try {
+          body = await response.json()
+        } catch {
+          body = null
+        }
         setError(body?.error ?? "Something went wrong, please try again.")
         return
       }
@@ -90,18 +96,32 @@ export default function LoginPage() {
               autoComplete="email"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
             />
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Password (min. 8 characters)"
-              required
-              minLength={8}
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Password (min. 8 characters)"
+                required
+                minLength={8}
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-11 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
 
             {error && (
               <p className="text-sm text-red-400 px-1" role="alert">

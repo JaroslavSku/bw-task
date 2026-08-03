@@ -59,8 +59,11 @@ export default function Home() {
     if (filterStatus !== "all") params.set("status", filterStatus)
     if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim())
 
-    fetch(`/api/todos?${params}`, { signal: controller.signal })
-      .then(async (response) => {
+    const loadTodos = async () => {
+      try {
+        const response = await fetch(`/api/todos?${params}`, {
+          signal: controller.signal,
+        })
         if (response.status === 401) {
           router.push("/login")
           return
@@ -74,15 +77,17 @@ export default function Home() {
         setCategories(data.categories)
         setStats(data.stats)
         setLoadState({ status: "ready" })
-      })
-      .catch(() => {
+      } catch {
         if (!controller.signal.aborted) {
           setLoadState({
             status: "error",
             message: "Could not load tasks. Please try again.",
           })
         }
-      })
+      }
+    }
+
+    void loadTodos()
 
     return () => controller.abort()
   }, [
@@ -100,26 +105,43 @@ export default function Home() {
 
   useEffect(() => {
     const source = new EventSource("/api/todos/stream")
+    let connectedBefore = false
+
+    source.addEventListener("open", () => {
+      if (connectedBefore) {
+        requestRefresh()
+      }
+      connectedBefore = true
+    })
     source.addEventListener("todos", requestRefresh)
+
     return () => source.close()
   }, [requestRefresh])
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { email: string } | null) => {
-        if (data) setUserEmail(data.email)
-      })
-      .catch(() => undefined)
+    const loadUserEmail = async () => {
+      try {
+        const response = await fetch("/api/auth/me")
+        if (!response.ok) {
+          return
+        }
+        const data: { email: string } = await response.json()
+        setUserEmail(data.email)
+      } catch {
+        return
+      }
+    }
+
+    void loadUserEmail()
   }, [])
 
-  const logout = useCallback(async () => {
+  const logout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" })
     } finally {
       router.push("/login")
     }
-  }, [router])
+  }
 
   const runTodoAction = useCallback(
     async (
@@ -284,7 +306,13 @@ export default function Home() {
             </div>
           )}
 
-          {loadState.status === "ready" && <StatsBar stats={stats} />}
+          {loadState.status === "ready" && (
+            <StatsBar
+              stats={stats}
+              filterStatus={filterStatus}
+              onFilterStatusChange={setFilterStatus}
+            />
+          )}
 
           <div className="mb-6 space-y-3">
             <FilterBar

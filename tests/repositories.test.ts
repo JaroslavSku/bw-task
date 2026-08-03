@@ -147,6 +147,40 @@ describe("todos repository", () => {
     expect(searchedTodos.map((todo) => todo.text)).toEqual(["Buy groceries"])
   })
 
+  it("filters overdue todos by due date", async () => {
+    const userId = await createTestUser("alice@example.com")
+    await createTodo(userId, {
+      text: "Overdue task",
+      priority: "high",
+      category: "work",
+      dueDate: "2020-01-01",
+    })
+    const lateButDone = await createTodo(userId, {
+      text: "Finished late",
+      priority: "low",
+      category: "work",
+      dueDate: "2020-01-01",
+    })
+    await updateTodo(userId, lateButDone.id, { done: true })
+    await createTodo(userId, {
+      text: "Due far in the future",
+      priority: "low",
+      category: "work",
+      dueDate: "2999-12-31",
+    })
+    await createTodo(userId, {
+      text: "No due date",
+      priority: "low",
+      category: "work",
+    })
+
+    const overdueTodos = await listTodos(userId, {
+      ...defaultFilters,
+      status: "overdue",
+    })
+    expect(overdueTodos.map((todo) => todo.text)).toEqual(["Overdue task"])
+  })
+
   it("treats like wildcards in search as literals", async () => {
     const userId = await createTestUser("alice@example.com")
     await createTodo(userId, {

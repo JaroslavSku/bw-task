@@ -1,50 +1,55 @@
-# HANDOVER — zbývající práce
+# HANDOVER: zbývající práce
 
-Karty jsou seřazené podle priority a psané tak, aby je zvládl junior bez dalšího
-kontextu. U každé je uvedeno, co už v projektu je a na co si dát pozor.
+Karty jsou seřazené podle priority.
 
 ---
 
-## [P1] HTTPS s vlastní doménou (Caddy)
+## [P2] Oddělit data od životnosti serveru
 
-**Kontext:** Aplikace na VM běží na portu 80 bez TLS. Session cookie má
-`secure: true` v produkci (`lib/auth/session.ts`) — prohlížeč `Secure` cookie
-přes čisté HTTP nikdy nepošle zpátky. Bez tohohle nasazení nejde přihlásit:
-server cookie nastaví, ale klient ji zahodí a hned tě to vrátí na `/login`.
-Ne „nemusí fungovat", ale nefunguje jistě. Compose stack je v `/opt/taskmaster`,
-definovaný v `terraform/cloud-init.yaml.tftpl`.
+**Kontext:** Data Postgresu leží v docker volume na disku serveru, takže zánik
+serveru = ztráta dat. Proti nechtěnému smazání dnes chrání jen `prevent_destroy`
+v `terraform/server.tf`, což je pojistka, ne řešení. Stejně tak je IP vázaná
+na server, takže výměna serveru znamená přepsat DNS záznam.
 
-**Úkol:**
-1. Zaregistruj/nasměruj doménu (A záznam na IP z `tofu output server_ip`).
-2. Do compose přidej službu `caddy` (image `caddy:2-alpine`, porty 80+443,
-   volume na certifikáty) s Caddyfile: `tvoje-domena.cz { reverse_proxy app:3000 }`.
-3. U služby `app` zruš mapování portu 80 (zůstane jen vnitřní síť).
-4. Otevři port 443 v `terraform/firewall.tf`.
+**Úkol:** Přidej `hcloud_volume` pro data Postgresu a `hcloud_floating_ip`.
 
-**Hotovo, když:** aplikace jede na https://tvoje-domena.cz, certifikát platný
-(Caddy si ho vyřídí sám přes Let's Encrypt), http přesměrovává na https.
+**Hotovo, když:** přetvoření serveru nezpůsobí ztrátu dat ani nevyžaduje sáhnout
+na DNS.
 
-**Odhad:** 2–3 h
-**Pozor na:** SSE přes reverse proxy — Caddy streamuje odpovědi automaticky,
-ale kdyby realtime přestal chodit, hledej buffering na proxy.
+**Odhad:** 3-4 h
+**Pozor na:** přesun dat na `hcloud_volume` znamená odstávku, nejdřív
+`pg_dump`, teprve pak přepínej. A `prevent_destroy` v `server.tf` musíš dočasně
+odstranit, jinak Terraform odmítne cokoli, co server nahrazuje.
+
+---
+
+## [P3] Ověřit SSE přes Caddy dlouhodobě
+
+**Kontext:** Caddy streamované odpovědi ve výchozím stavu nebufferuje, takže
+SSE přes proxy funguje. Ověřené je to ale jen krátkodobě.
+
+**Úkol:** Nech dvě okna otevřená na doméně několik hodin a sleduj, jestli
+realtime nepřestane chodit. Když ano, hledej idle timeouty v Caddy nebo
+zkrať heartbeat (25 s v `app/api/todos/stream/route.ts`).
+
+**Hotovo, když:** změna v jednom okně se po hodinách provozu pořád objeví
+v druhém do sekundy.
+
+**Odhad:** 1 h + čekání
 
 ---
 
 ## [P1] Rate limiting na auth endpointy
 
-**Kontext:** `/api/auth/login` a `/api/auth/register` nejsou nijak omezené —
-lze zkoušet hesla neomezenou rychlostí. bcrypt lámání brzdí (~100 ms/pokus),
-ale online bruteforce je pořád možný.
+**Kontext:** `/api/auth/login` a `/api/auth/register` nejsou nijak omezené
 
 **Úkol:** Do obou handlerů přidej limit na IP (např. 10 pokusů za minutu).
-Pro jednu instanci stačí in-memory mapa `ip → časy pokusů` s úklidem starých
-záznamů; pro víc instancí je potřeba sdílené úložiště (Redis, nebo tabulka
-v Postgresu s `created_at` indexem).
+Pro jednu instanci stačí in-memory mapa jinak Redis.
 
 **Hotovo, když:** 11. pokus během minuty vrátí 429 s hlavičkou `Retry-After`,
 test to pokrývá.
 
-**Odhad:** 3–4 h
+**Odhad:** 1 h
 **Pozor na:** za reverse proxy čti IP z `X-Forwarded-For` (první hodnota),
 jinak limitneš proxy místo útočníka.
 
@@ -55,15 +60,12 @@ jinak limitneš proxy místo útočníka.
 **Kontext:** Postgres běží v kontejneru s volume `db-data` na jediné VM.
 Když VM umře, data jsou pryč.
 
-**Úkol:** Cron na VM: `docker compose exec -T db pg_dump -U postgres taskmaster
-| gzip > /backup/taskmaster-$(date +%F).sql.gz`, rotace 14 dní, upload mimo VM
-(Hetzner Storage Box nebo S3). Jednou za čas restore test.
+**Úkol:** Cron na VM: pg_dump, lépe mimo naše VM tedy třeba CloudFlare R2.
 
 **Hotovo, když:** záloha vzniká denně, leží mimo VM a existuje ověřený postup
 obnovy (dokumentovaný v README).
 
 **Odhad:** 3 h
-**Pozor na:** zálohu, kterou nikdo nikdy nezkusil obnovit, nelze počítat za zálohu.
 
 ---
 
@@ -71,11 +73,9 @@ obnovy (dokumentovaný v README).
 
 **Kontext:** Existuje `/api/health` (ověřuje i spojení do DB) a strukturované
 pino logy na stdout (`docker compose logs app`). Nikdo se ale nedozví, když
-aplikace spadne.
+aplikace umře.
 
-**Úkol:** Minimálně: externí uptime check na `/api/health` (UptimeRobot apod.)
-s notifikací. Lépe: `docker stats` → node_exporter + Prometheus + Grafana,
-alert na paměť > 80 % a error rate v lozích.
+**Úkol:** Instalace Grafana a Prometheus.
 
 **Hotovo, když:** výpadek aplikace nebo DB pošle notifikaci do 5 minut.
 
@@ -95,67 +95,100 @@ kontroluje nové tagy.
 
 **Hotovo, když:** merge do master se do pár minut sám objeví na VM.
 
-**Odhad:** 2–3 h
-**Pozor na:** deploy job pouštěj až po úspěšném build & push jobu (`needs:`),
-a používej SHA tag, ne `latest`, ať je jasné, co přesně běží.
+**Odhad:** 2-3 h
 
 ---
 
 ## [P3] E2E testy (Playwright)
 
-**Kontext:** Unit a integrační testy pokrývají schémata a SQL vrstvu (33 testů),
-ale nikdo automaticky neklika UI. Kritické flow: registrace → přidání úkolu →
+**Kontext:** Kritické flow: registrace → přidání úkolu →
 označení hotovo → odhlášení → přihlášení → data tam pořád jsou.
 
-**Úkol:** Playwright s webServer konfigurací (spustí `pnpm dev` proti testovací
-DB), 3–5 scénářů včetně realtime (dvě context pages, změna v jedné se objeví
-v druhé). Zapoj do CI za stávající testy.
+**Úkol:** Playwright s webServer konfigurací zapoj do CI za stávající testy.
 
 **Hotovo, když:** `pnpm test:e2e` projde lokálně i v CI.
 
 **Odhad:** 1 den
-**Pozor na:** SSE v testu chvíli trvá — použij `expect.poll`/`toPass`, ne pevné sleepy.
 
 ---
 
 ## [P3] Stránkování v UI
 
 **Kontext:** API stránkování umí (`limit`/`offset`, default 100, max 200),
-frontend zatím bere první stránku — pro osobní todo list to stačí.
+frontend zatím bere první stránku, pro osobní todo list to stačí.
 
-**Úkol:** Přidej „Load more" tlačítko (offset += limit, append k seznamu),
-nebo infinite scroll. Stats zůstávají globální (počítá je server zvlášť).
+**Úkol:** Přidej „Load more" tlačítko,
+nebo infinite scroll.
 
 **Hotovo, když:** uživatel se 300 úkoly doskroluje ke všem.
 
 **Odhad:** 3 h
-**Pozor na:** SSE refetch teď stahuje jen první stránku — po refetchi je
-potřeba buď zahodit načtené stránky, nebo refetchnout všechny do aktuálního offsetu.
 
 ---
 
-## [P3] Vypnout trivy „report only" režim
+## [P3] Řazení úkolů
 
-**Kontext:** trivy v `docker.yml` má `exit-code: 0` — nálezy jen reportuje,
-build neshazuje. Záměr: nejdřív posbírat baseline, pak zpřísnit.
+**Kontext:** Řadí se napevno `order by created_at desc, id desc`
+(`lib/repositories/todos.ts`), uživatel to nemůže změnit.
 
-**Úkol:** Po pár týdnech projdi nálezy, oprav/akceptuj (`.trivyignore`
-s komentářem proč), přepni `exit-code: 1` pro CRITICAL.
+**Úkol:** Přidej `sort` do `todoFiltersSchema` (termín, priorita, název, vytvoření)
+a select do FilterBaru. Volitelně vlastní pořadí přes sloupec `position`
+a drag and drop.
 
-**Hotovo, když:** nový CRITICAL CVE v base image zastaví pipeline.
+**Hotovo, když:** uživatel si seznam seřadí podle termínu a volba mu vydrží
+i po refetchi.
 
-**Odhad:** 2 h
+**Odhad:** 4 h (vlastní pořadí s drag and drop spíš 1 den)
+
+**Pozor na:** priorita je text s hodnotami `low`/`medium`/`high`, takže abecedně
+by vyšlo high, low, medium. Potřebuje `case` v `order by` nebo vlastní enum typ.
+Index `todos_user_created_idx` pokrývá jen řazení podle `created_at`, na řazení
+podle `due_date` je potřeba další index, jinak to u velkých seznamů bude sekvenční
+scan a sort.
 
 ---
 
-## [P4] Migrace na Supabase (pokud by byla strategicky žádoucí)
+## [P2] Refresh token
 
-**Kontext:** Schéma je čistý Postgres, takže přenos je přímočarý. Dnes je auth
-vlastní (JWT cookie) a autorizace `where user_id` na serveru.
+**Kontext:** Jeden JWT s platností 7 dní (`lib/auth/session.ts`). Odhlášení smaže
+cookie, ale token platí dál, takže ukradený token nejde zneplatnit.
 
-**Úkol:** Přenést schéma, zapnout RLS politiky (`user_id = auth.uid()`),
-nahradit vlastní auth za Supabase Auth, SSE nahradit Supabase Realtime.
+**Úkol:** Krátký access token (15 min) plus refresh token uložený v DB, s rotací
+při každém použití. Odhlášení pak maže řádek v DB, ne jen cookie.
 
-**Odhad:** 2–3 dny
-**Pozor na:** RLS má smysl až ve chvíli, kdy klient mluví s DB přímo — do té
-doby by jen duplikovala serverovou kontrolu.
+**Hotovo, když:** ukradený token přestane fungovat do 15 minut a jde vynutit
+odhlášení ze všech zařízení.
+
+**Odhad:** 1 den
+
+---
+
+## [P3] Škálování a Kubernetes
+
+**Kontext:** Aplikace je bezstavová a `pg_notify` chodí napříč instancemi, takže
+víc replik je možných už dnes. Běží ale jedna instance na jedné VM.
+
+**Úkol:** Deployment se dvěma a více replikami za load balancerem, Postgres ven
+z compose do spravované služby. Image je na to připravený (`USER 1000` číselně,
+`/api/health` pro liveness a readiness).
+
+**Hotovo, když:** výpadek jedné repliky neshodí aplikaci.
+
+**Odhad:** 2-3 dny
+
+---
+
+## [P4] Alternativa: Supabase
+
+**Kontext:** Schéma je čistý Postgres, přechod by byl přímočarý.
+
+**Úkol:** Přenést schéma, zapnout RLS (`user_id = auth.uid()`), nahradit vlastní
+JWT auth za Supabase Auth a SSE za Supabase Realtime.
+
+**Hotovo, když:** aplikace běží bez vlastní DB a auth vrstvy.
+
+**Odhad:** 2-3 dny
+**Pozor na:** RLS dává smysl až když klient mluví s DB přímo, do té doby by jen
+zdvojovala serverovou kontrolu.
+
+---

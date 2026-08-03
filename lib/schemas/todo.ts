@@ -48,7 +48,7 @@ export const updateTodoSchema = z
 export const todoFiltersSchema = z.object({
   category: categorySchema.optional(),
   priority: prioritySchema.optional(),
-  status: z.enum(["active", "completed"]).optional(),
+  status: z.enum(["active", "completed", "overdue"]).optional(),
   search: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
   offset: z.coerce.number().int().min(0).default(0),

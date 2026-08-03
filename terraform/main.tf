@@ -22,6 +22,11 @@ variable "ssh_key_name" {
   default = "jaroslav-laptop"
 }
 
+variable "domain" {
+  description = "Verejna domena aplikace, napr. taskmaster.sportagio.app. Caddy pro ni sam vyzada TLS certifikat."
+  type        = string
+}
+
 variable "postgres_password" {
   type      = string
   sensitive = true

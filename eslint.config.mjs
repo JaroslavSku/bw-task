@@ -5,6 +5,11 @@ import typescriptRules from "eslint-config-next/typescript"
 export default defineConfig([
   ...coreWebVitals,
   ...typescriptRules,
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+    },
+  },
   globalIgnores([
     ".next/**",
     "node_modules/**",

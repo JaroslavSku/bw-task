@@ -19,7 +19,7 @@ export function validationError(error: ZodError): NextResponse {
   )
 }
 
-export async function readJsonBody(request: Request): Promise<unknown | null> {
+export async function readJsonBody(request: Request): Promise<unknown> {
   try {
     return await request.json()
   } catch {
