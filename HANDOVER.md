@@ -1,35 +1,6 @@
-# HANDOVER — zbývající práce
+# HANDOVER: zbývající práce
 
-Karty jsou seřazené podle priority a psané tak, aby je zvládl junior bez dalšího
-kontextu. U každé je uvedeno, co už v projektu je a na co si dát pozor.
-
----
-
-## [HOTOVO] HTTPS s vlastní doménou (Caddy)
-
-Aplikace na `https://taskmaster.sportagio.app` — Caddy jako reverse proxy
-(image `caddy:2-alpine`, porty 80+443) s automatickým Let's Encrypt certifikátem
-
-**Kontext pro navazující práci:** cloud-init běží jen při prvním bootu, takže
-`user_data` je bootstrap, ne správa konfigurace. Caddy byl proto na běžící VM
-nasazený ručně přes SSH
-
-Aby z toho Terraform nechtěl server přetvořit (a smazat volume `db-data` se
-všemi daty), má `hcloud_server` v `terraform/server.tf` `lifecycle` blok
-s `ignore_changes = [user_data]`
-
----
-
-## [HOTOVO] Osekání cloud-initu na bootstrap
-
-Produkční stack je v `deploy/` jako běžné soubory (`docker-compose.prod.yml`,
-`Caddyfile`), na server je kopíruje `scripts/deploy.ps1`. Cloud-init dělá jen
-„nainstaluj Docker a zapiš `.env`". Odpadlo tím vnořování compose jako řetězce
-do YAMLu do Terraform šablony (a s ním `$${VAR}` escapování) a produkční compose
-jde nově validovat přes `docker compose config`.
-
-Doména se do Caddyfile dostává přes `{$DOMAIN}` z `.env`, takže v repu není
-napevno.
+Karty jsou seřazené podle priority.
 
 ---
 
@@ -37,7 +8,7 @@ napevno.
 
 **Kontext:** Data Postgresu leží v docker volume na disku serveru, takže zánik
 serveru = ztráta dat. Proti nechtěnému smazání dnes chrání jen `prevent_destroy`
-v `terraform/server.tf` — což je pojistka, ne řešení. Stejně tak je IP vázaná
+v `terraform/server.tf`, což je pojistka, ne řešení. Stejně tak je IP vázaná
 na server, takže výměna serveru znamená přepsat DNS záznam.
 
 **Úkol:** Přidej `hcloud_volume` pro data Postgresu a `hcloud_floating_ip`.
@@ -45,8 +16,8 @@ na server, takže výměna serveru znamená přepsat DNS záznam.
 **Hotovo, když:** přetvoření serveru nezpůsobí ztrátu dat ani nevyžaduje sáhnout
 na DNS.
 
-**Odhad:** 3–4 h
-**Pozor na:** přesun dat na `hcloud_volume` znamená odstávku — nejdřív
+**Odhad:** 3-4 h
+**Pozor na:** přesun dat na `hcloud_volume` znamená odstávku, nejdřív
 `pg_dump`, teprve pak přepínej. A `prevent_destroy` v `server.tf` musíš dočasně
 odstranit, jinak Terraform odmítne cokoli, co server nahrazuje.
 
@@ -124,7 +95,7 @@ kontroluje nové tagy.
 
 **Hotovo, když:** merge do master se do pár minut sám objeví na VM.
 
-**Odhad:** 2–3 h
+**Odhad:** 2-3 h
 
 ---
 
@@ -144,7 +115,7 @@ označení hotovo → odhlášení → přihlášení → data tam pořád jsou.
 ## [P3] Stránkování v UI
 
 **Kontext:** API stránkování umí (`limit`/`offset`, default 100, max 200),
-frontend zatím bere první stránku — pro osobní todo list to stačí.
+frontend zatím bere první stránku, pro osobní todo list to stačí.
 
 **Úkol:** Přidej „Load more" tlačítko,
 nebo infinite scroll.
@@ -152,5 +123,50 @@ nebo infinite scroll.
 **Hotovo, když:** uživatel se 300 úkoly doskroluje ke všem.
 
 **Odhad:** 3 h
+
+---
+
+## [P2] Refresh token
+
+**Kontext:** Jeden JWT s platností 7 dní (`lib/auth/session.ts`). Odhlášení smaže
+cookie, ale token platí dál, takže ukradený token nejde zneplatnit.
+
+**Úkol:** Krátký access token (15 min) plus refresh token uložený v DB, s rotací
+při každém použití. Odhlášení pak maže řádek v DB, ne jen cookie.
+
+**Hotovo, když:** ukradený token přestane fungovat do 15 minut a jde vynutit
+odhlášení ze všech zařízení.
+
+**Odhad:** 1 den
+
+---
+
+## [P3] Škálování a Kubernetes
+
+**Kontext:** Aplikace je bezstavová a `pg_notify` chodí napříč instancemi, takže
+víc replik je možných už dnes. Běží ale jedna instance na jedné VM.
+
+**Úkol:** Deployment se dvěma a více replikami za load balancerem, Postgres ven
+z compose do spravované služby. Image je na to připravený (`USER 1000` číselně,
+`/api/health` pro liveness a readiness).
+
+**Hotovo, když:** výpadek jedné repliky neshodí aplikaci.
+
+**Odhad:** 2-3 dny
+
+---
+
+## [P4] Alternativa: Supabase
+
+**Kontext:** Schéma je čistý Postgres, přechod by byl přímočarý.
+
+**Úkol:** Přenést schéma, zapnout RLS (`user_id = auth.uid()`), nahradit vlastní
+JWT auth za Supabase Auth a SSE za Supabase Realtime.
+
+**Hotovo, když:** aplikace běží bez vlastní DB a auth vrstvy.
+
+**Odhad:** 2-3 dny
+**Pozor na:** RLS dává smysl až když klient mluví s DB přímo, do té doby by jen
+zdvojovala serverovou kontrolu.
 
 ---
