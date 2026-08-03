@@ -8,9 +8,11 @@ kontextu. U každé je uvedeno, co už v projektu je a na co si dát pozor.
 ## [P1] HTTPS s vlastní doménou (Caddy)
 
 **Kontext:** Aplikace na VM běží na portu 80 bez TLS. Session cookie má
-`secure: true` v produkci, takže přes čisté HTTP se přihlášení v moderním
-prohlížeči nemusí udržet. Compose stack je v `/opt/taskmaster`, definovaný
-v `terraform/cloud-init.yaml.tftpl`.
+`secure: true` v produkci (`lib/auth/session.ts`) — prohlížeč `Secure` cookie
+přes čisté HTTP nikdy nepošle zpátky. Bez tohohle nasazení nejde přihlásit:
+server cookie nastaví, ale klient ji zahodí a hned tě to vrátí na `/login`.
+Ne „nemusí fungovat", ale nefunguje jistě. Compose stack je v `/opt/taskmaster`,
+definovaný v `terraform/cloud-init.yaml.tftpl`.
 
 **Úkol:**
 1. Zaregistruj/nasměruj doménu (A záznam na IP z `tofu output server_ip`).
