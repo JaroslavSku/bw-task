@@ -2,6 +2,8 @@
 
 Todo aplikace (Next.js 16 + PostgreSQL) dotažená z rozpracovaného stavu do produkčního.
 
+**Živě:** https://taskmaster.sportagio.app
+
 ## Jak spustit
 
 ### Docker Compose (doporučeno)
@@ -11,8 +13,8 @@ cp .env.example .env        # doplň POSTGRES_PASSWORD a JWT_SECRET
 docker compose up --build
 ```
 
-Aplikace běží na http://localhost:3000. Migrace proběhnou automaticky v samostatném
-kontejneru před startem aplikace.
+Běží na http://localhost:3000, migrace proběhnou v samostatném kontejneru před
+startem aplikace.
 
 ### Lokální vývoj
 
@@ -29,8 +31,6 @@ pnpm dev
 Účet si vytvoříš na `/login` (Sign up). Realtime vyzkoušíš otevřením aplikace
 ve dvou oknech — změna v jednom se do vteřiny projeví v druhém.
 
-### Příkazy
-
 | Příkaz                         | Co dělá                                 |
 | ------------------------------ | --------------------------------------- |
 | `pnpm dev`                     | dev server (Turbopack)                  |
@@ -41,28 +41,25 @@ ve dvou oknech — změna v jednom se do vteřiny projeví v druhém.
 
 ## Co jsem našel a opravil
 
-Původní kód obsahoval nastražené chyby. Nejdůležitější nálezy, ověřené měřením:
-
 1. **Memory leak v `trackRequest()`** — každý požadavek uložil do modulové `Map`
-   ~4 MB (serializovaný `process.env`, stack trace a 2 MB padding) a nikdy nemazal.
-   Naměřeno: 91 MB → 1549 MB po 349 požadavcích; při 50 souběžných spojeních server
-   spadl po ~1000 požadavcích (23k chybových odpovědí z 24k). Funkce nic užitečného
-   nedělala — odstraněna, logování nahrazeno pinem.
-2. **Únik tajemství** — `trackRequest` ukládal do paměti kompletní `process.env`
-   včetně případných DB hesel a klíčů. Bezpečnostní, ne výkonnostní problém.
+   ~4 MB (serializovaný `process.env`, stack trace, 2 MB padding) a nikdy nemazal.
+   Naměřeno 91 MB → 1549 MB po 349 požadavcích; při 50 spojeních server spadl po
+   ~1000 požadavcích (23k chyb z 24k odpovědí). Funkce nedělala nic užitečného —
+   odstraněna, logování nahrazeno pinem.
+2. **Únik tajemství** — tatáž funkce držela v paměti celé `process.env` včetně
+   DB hesel a klíčů. Bezpečnostní, ne výkonnostní problém.
 3. **Umělé zpoždění 100 ms** v GET handleru — odstraněno.
-4. **„Databáze" bylo pole v paměti procesu** — restart = ztráta dat, druhá instance =
-   jiná data. Nahrazeno PostgreSQL (bez toho nejde splnit škálování na víc instancí).
+4. **„Databáze" bylo pole v paměti procesu** — restart = ztráta dat, druhá
+   instance = jiná data. Nahrazeno PostgreSQL; bez toho nejde splnit škálování.
 5. **Žádná validace vstupů** — `POST {}` vytvořil todo bez textu, smazání
-   neexistujícího id vracelo `200 success`. Teď: Zod validace, správné stavové kódy
-   (400/401/404/409), pokryto testy.
+   neexistujícího id vrátilo `200 success`. Teď Zod a správné kódy (400/401/404/409).
 6. **Frontend bez ošetření chyb** — fetch bez catch, optimistické updaty bez
-   rollbacku, request na každou klávesu hledání, race condition mezi odpověďmi.
-   Teď: debounce 300 ms, AbortController, rollback + chybová hláška, error stav s retry.
+   rollbacku, request na každou klávesu, race condition mezi odpověďmi. Teď
+   debounce 300 ms, AbortController, rollback s hláškou, error stav s retry.
 7. Drobnější: duplicitní `layout.js`, typy definované dvakrát, `strict: false`,
    `id: Date.now()` (kolize), statistiky ve 4 průchodech, externí Google Fonts.
 
-## Výsledky měření (autocannon, produkční build)
+### Měření (autocannon, produkční build)
 
 | Metrika                                    | Před                        | Po                    |
 | ------------------------------------------ | --------------------------- | --------------------- |
@@ -82,61 +79,56 @@ lib/realtime/*.ts       Postgres LISTEN klient pro SSE
 migrations/             db-migrate (čisté SQL v migrations/sqls)
 ```
 
-- **Autentizace:** registrace/login, bcrypt (12 rund), JWT v httpOnly cookie
-  (`sameSite: lax`, `secure` v produkci), middleware chrání stránky i API,
-  každý SQL dotaz filtruje `user_id`.
+- **Autentizace:** bcrypt (12 rund), JWT v httpOnly cookie (`sameSite: lax`,
+  `secure` v produkci), middleware chrání stránky i API, každý SQL dotaz
+  filtruje `user_id`.
 - **Realtime:** DB trigger → `pg_notify` → jeden LISTEN klient na proces → SSE
-  stream per uživatel → klient refetchne. Funguje napříč instancemi aplikace,
-  protože společným bodem je Postgres.
+  stream per uživatel → klient refetchne. Funguje napříč instancemi, protože
+  společným bodem je Postgres.
 - **Škálování:** aplikace nedrží stav v paměti → lze pustit N instancí za load
   balancer nad jednou DB. Index kopíruje hlavní dotaz, stránkování limit/offset,
-  stats jedním dotazem, connection pool (max 10/instance).
+  statistiky jedním dotazem, connection pool (max 10/instance).
 
 ## Rozhodnutí a kompromisy
 
-- **Next.js Route Handlers, ne NestJS** — backend už existoval; zadání říká dostat
-  aplikaci do produkčního stavu, ne přepsat framework. Vrstvy (routes → repositories
-  → schémata) ale odpovídají tomu, co znáte z Nestu.
-- **Čistý `pg` + SQL, ne ORM** — celá datová vrstva je pět dotazů; SQL je tu
-  čitelnější a rychlejší na obhajobu než modely ORM. Migrace řeší zavedený
-  db-migrate.
-- **Ne Supabase** — deployment na VM má být soběstačný. Migrace by byla přímočará
-  (čistý Postgres), přibyla by RLS vrstva a Supabase Auth.
+- **Next.js Route Handlers, ne NestJS** — backend už existoval a zadání říká
+  dostat aplikaci do produkčního stavu, ne přepsat framework. Vrstvy (routes →
+  repositories → schémata) ale odpovídají tomu, co dělá Nest.
+- **Čistý `pg` + SQL, ne ORM** — datová vrstva je pět dotazů; SQL je tu čitelnější
+  než modely ORM. Migrace řeší zavedený db-migrate.
+- **Ne Supabase** — nasazení na VM má být soběstačné. Přechod by byl přímočarý
+  (čisté Postgres schéma), přibyla by RLS a Supabase Auth.
 - **Ne RLS** — klient nemá přímý přístup k DB; `where user_id = $1` skládané
-  serverem je vynucená hranice. RLS by vyžadovalo propagovat identitu do DB session
-  a hlídat reset v poolu — přidaná složitost bez přidané bezpečnosti v tomto modelu.
+  serverem je vynucená hranice. RLS by znamenala propagovat identitu do DB session
+  a hlídat její reset v poolu — složitost bez přidané bezpečnosti v tomto modelu.
 - **Ne Redis/cache** — per-user data měněná každou akcí; cache by netrefovala
-  a invalidace je riziko úniku mezi uživateli. Správný nástroj: indexy + stránkování.
+  a její invalidace je riziko úniku mezi uživateli. Správně: indexy a stránkování.
 - **SSE, ne WebSocket** — tok notifikací je jednosměrný (zápisy jdou běžným
-  POST/PATCH), takže obousměrný kanál není potřeba. SSE je obyčejné HTTP: projde
-  proxy, autentizuje se stejnou cookie a prohlížeč má vestavěný reconnect.
-  WebSocket by navíc v Next.js Route Handlers nativně nešel — vyžadoval by custom
-  server nebo samostatný ws proces, tedy další infrastrukturu za nulový přínos.
-- **`pg_notify`, ne in-memory events nebo Redis pub/sub** — události musí dorazit
-  všem instancím aplikace, in-memory emitter zná jen svou instanci. Postgres už
-  ve stacku je a LISTEN/NOTIFY tuhle práci odvede bez další služby; DB trigger
-  navíc zachytí i změny provedené mimo aplikaci. Redis pub/sub by byl správný
-  krok, až by NOTIFY přestal stačit (velké payloady, tisíce zpráv/s).
-- **pnpm supply chain** — `minimumReleaseAge: 10080` (instalují se jen ≥7 dní staré
-  verze), build skripty závislostí blokované (`sharp` ověřen jako nepotřebný —
-  `next/image` se nepoužívá).
+  POST/PATCH). SSE je obyčejné HTTP: projde proxy, autentizuje se stejnou cookie,
+  prohlížeč má vestavěný reconnect. WebSocket by v Route Handlers vyžadoval
+  custom server nebo samostatný ws proces.
+- **`pg_notify`, ne in-memory events ani Redis pub/sub** — události musí dorazit
+  všem instancím, in-memory emitter zná jen svou. Postgres už ve stacku je a
+  trigger zachytí i změny mimo aplikaci. Redis až by NOTIFY přestal stačit.
+- **pnpm supply chain** — `minimumReleaseAge: 10080` (jen ≥7 dní staré verze),
+  build skripty závislostí blokované.
 
 ## CI/CD a deployment
 
-- **`.github/workflows/ci.yml`** — na PR a master: typecheck, lint, testy proti
-  Postgres service kontejneru, build, `pnpm audit`.
-- **`.github/workflows/docker.yml`** — po merge do master: build & push
-  `ghcr.io/jaroslavsku/bw-task` (app) a `bw-task-migrate` (migrace) s tagy
-  `latest` + SHA, poté trivy scan.
-- **`terraform/`** — Hetzner VM (cx23, Ubuntu 24.04) s firewallem (SSH jen z mé IP,
-  HTTP/HTTPS veřejné). Cloud-init dělá jen bootstrap: nainstaluje Docker a zapíše
-  `/opt/taskmaster/.env` se secrety.
+- **`ci.yml`** (PR + master) — tři joby: `checks` (typecheck, lint, testy proti
+  Postgres service kontejneru, build), `docker-build` (sestaví oba image bez
+  pushnutí, ať se rozbitý Dockerfile pozná už na PR) a `audit`
+  (`pnpm audit --prod --audit-level critical`).
+- **`docker.yml`** (po merge do master) — build & push `ghcr.io/jaroslavsku/bw-task`
+  a `bw-task-migrate` s tagy `latest` + SHA, poté trivy scan.
+- **`terraform/`** — Hetzner VM (cx23, Ubuntu 24.04), firewall (SSH jen z mé IP,
+  HTTP/HTTPS veřejné). Cloud-init dělá jen bootstrap: Docker a `.env` se secrety.
 - **`deploy/`** — produkční stack jako běžné soubory (`docker-compose.prod.yml`
-  s ghcr images + Caddy, `Caddyfile`). Na server je dostane `scripts/deploy.ps1`,
-  takže aplikační změna nevyžaduje sáhnout na Terraform.
+  s ghcr images + Caddy, `Caddyfile`). Aplikační změna tak nevyžaduje sáhnout
+  na Terraform a compose jde validovat přes `docker compose config`.
 
-Proměnné se nepíší do souboru, ale předávají přes `TF_VAR_*` proměnné prostředí
-(nic tajného tak neleží natrvalo na disku):
+Proměnné se nepíšou do souboru, ale předávají přes `TF_VAR_*` (nic tajného tak
+neleží natrvalo na disku):
 
 ```powershell
 cd terraform
@@ -149,28 +141,20 @@ tofu init
 tofu apply
 ```
 
-**Živé nasazení:** https://taskmaster.sportagio.app — Caddy jako reverse proxy
-s automatickým Let's Encrypt certifikátem (HTTP se přesměruje na HTTPS).
+Po `tofu apply` je server jen připravený — aplikaci na něj dostane až
+`.\scripts\deploy.ps1` (nakopíruje `deploy/`, stáhne image, restartuje stack,
+ověří `/api/health`). Infrastruktura a aplikace jsou oddělené kroky.
 
-Po `tofu apply` je server jen připravený (Docker + secrety), aplikaci na něj
-dostane až deploy skript — infrastruktura a aplikace jsou oddělené kroky.
-
-Deployment nové verze (po merge do master, až doběhne `docker.yml`):
-
-```powershell
-.\scripts\deploy.ps1
-```
-
-Nakopíruje `deploy/` na server, stáhne nové image, restartuje stack a ověří
-`/api/health`. Automatizace přes CI je kandidát na doplnění, viz HANDOVER.
+TLS řeší Caddy s automatickým Let's Encrypt certifikátem, HTTP se přesměruje
+na HTTPS.
 
 ## Bezpečnost Docker image
 
-- multi-stage build, finální image jen se standalone výstupem
-- proces běží jako `USER 1000` (číselně — ověřitelné i pro případný
-  `runAsNonRoot` v k8s), soubory vlastní root → aplikace nemůže přepsat vlastní kód
+- multi-stage build, finální image obsahuje jen standalone výstup
+- proces běží jako `USER 1000` (číselně — projde i `runAsNonRoot` v k8s),
+  soubory vlastní root → aplikace nemůže přepsat vlastní kód
 - žádné secrety v image, vše přes env
-- trivy scan v CI (report režim)
+- trivy scan v CI (zatím report režim, viz HANDOVER)
 
 ## Zbývající práce
 
