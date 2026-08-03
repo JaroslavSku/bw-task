@@ -1,253 +1,262 @@
 "use client"
 
-import { cn } from "@/lib/utils"
-import {
-  AlertCircle,
-  Calendar,
-  Check,
-  Filter,
-  Loader2,
-  Plus,
-  Search,
-  Sparkles,
-  Tag,
-  Trash2,
-  X,
-} from "lucide-react"
-import { useEffect, useState } from "react"
+import { LogOut, Sparkles, X } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { AddTodoForm, type NewTodoInput } from "@/components/AddTodoForm"
+import { FilterBar, type CategoryFilter, type PriorityFilter, type StatusFilter } from "@/components/FilterBar"
+import { StatsBar } from "@/components/StatsBar"
+import { TodoList, type LoadState } from "@/components/TodoList"
+import { useDebouncedValue } from "@/hooks/useDebouncedValue"
+import type { CategoryInfo } from "@/lib/categories"
+import type { Priority, Todo } from "@/lib/schemas/todo"
+import type { TodoStats, TodosResponse } from "@/lib/types"
 
-type Priority = "low" | "medium" | "high"
-type Category = "personal" | "work" | "shopping" | "health" | "other"
-
-interface Todo {
-  id: number
-  text: string
-  done: boolean
-  priority: Priority
-  category: Category
-  dueDate?: string
-  createdAt: string
-  completedAt?: string
-}
-
-interface CategoryInfo {
-  id: Category
-  label: string
-  color: string
-}
-
-interface Stats {
-  total: number
-  completed: number
-  active: number
-  overdue: number
-}
-
-const priorityConfig = {
-  low: {
-    label: "Low",
-    color: "text-slate-400",
-    bg: "bg-slate-400/10",
-    border: "border-slate-400/30",
-  },
-  medium: {
-    label: "Medium",
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10",
-    border: "border-yellow-400/30",
-  },
-  high: {
-    label: "High",
-    color: "text-red-400",
-    bg: "bg-red-400/10",
-    border: "border-red-400/30",
-  },
-}
+const emptyStats: TodoStats = { total: 0, completed: 0, active: 0, overdue: 0 }
+const jsonHeaders = { "Content-Type": "application/json" }
 
 export default function Home() {
+  const router = useRouter()
+
   const [todos, setTodos] = useState<Todo[]>([])
   const [categories, setCategories] = useState<CategoryInfo[]>([])
-  const [stats, setStats] = useState<Stats>({
-    total: 0,
-    completed: 0,
-    active: 0,
-    overdue: 0,
-  })
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<TodoStats>(emptyStats)
+  const [loadState, setLoadState] = useState<LoadState>({ status: "loading" })
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
-  // Form state
-  const [text, setText] = useState("")
-  const [priority, setPriority] = useState<Priority>("medium")
-  const [category, setCategory] = useState<Category>("other")
-  const [dueDate, setDueDate] = useState("")
   const [showForm, setShowForm] = useState(false)
-
-  // Filter state
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterCategory, setFilterCategory] = useState<Category | "all">("all")
-  const [filterPriority, setFilterPriority] = useState<Priority | "all">("all")
-  const [filterStatus, setFilterStatus] = useState<
-    "all" | "active" | "completed"
-  >("all")
   const [showFilters, setShowFilters] = useState(false)
 
-  // Edit state
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editText, setEditText] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterCategory, setFilterCategory] = useState<CategoryFilter>("all")
+  const [filterPriority, setFilterPriority] = useState<PriorityFilter>("all")
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>("all")
+  const debouncedSearch = useDebouncedValue(searchQuery, 300)
 
-  const fetchTodos = () => {
+  const [refreshCounter, setRefreshCounter] = useState(0)
+
+  const todosRef = useRef<Todo[]>([])
+  const statsRef = useRef<TodoStats>(emptyStats)
+
+  useEffect(() => {
+    todosRef.current = todos
+  }, [todos])
+
+  useEffect(() => {
+    statsRef.current = stats
+  }, [stats])
+
+  useEffect(() => {
+    if (!actionError) return
+    const timer = setTimeout(() => setActionError(null), 5000)
+    return () => clearTimeout(timer)
+  }, [actionError])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
     const params = new URLSearchParams()
     if (filterCategory !== "all") params.set("category", filterCategory)
     if (filterPriority !== "all") params.set("priority", filterPriority)
     if (filterStatus !== "all") params.set("status", filterStatus)
-    if (searchQuery) params.set("search", searchQuery)
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim())
 
-    fetch(`/api/todos?${params}`)
-      .then((res) => res.json())
-      .then((data) => {
+    fetch(`/api/todos?${params}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (response.status === 401) {
+          router.push("/login")
+          return
+        }
+        if (!response.ok) {
+          throw new Error(`request failed with status ${response.status}`)
+        }
+        const data: TodosResponse = await response.json()
         setTodos(data.todos)
         setCategories(data.categories)
         setStats(data.stats)
-        setLoading(false)
+        setLoadState({ status: "ready" })
       })
-  }
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setLoadState({ status: "error", message: "Could not load tasks. Please try again." })
+        }
+      })
+
+    return () => controller.abort()
+  }, [filterCategory, filterPriority, filterStatus, debouncedSearch, refreshCounter, router])
+
+  const requestRefresh = useCallback(() => {
+    setRefreshCounter((current) => current + 1)
+  }, [])
 
   useEffect(() => {
-    fetchTodos()
-  }, [filterCategory, filterPriority, filterStatus, searchQuery])
+    const source = new EventSource("/api/todos/stream")
+    source.addEventListener("todos", requestRefresh)
+    return () => source.close()
+  }, [requestRefresh])
 
-  const addTodo = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!text.trim()) return
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { email: string } | null) => {
+        if (data) setUserEmail(data.email)
+      })
+      .catch(() => undefined)
+  }, [])
 
-    const tempId = Date.now()
-    const newTodo: Todo = {
-      id: tempId,
-      text,
+  const logout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } finally {
+      router.push("/login")
+    }
+  }, [router])
+
+  const addTodo = useCallback(async (input: NewTodoInput) => {
+    const previousTodos = todosRef.current
+    const previousStats = statsRef.current
+    const temporaryId = -Date.now()
+    const optimisticTodo: Todo = {
+      id: temporaryId,
+      text: input.text,
       done: false,
-      priority,
-      category,
-      dueDate: dueDate || undefined,
+      priority: input.priority,
+      category: input.category,
+      dueDate: input.dueDate,
       createdAt: new Date().toISOString(),
     }
-    setTodos((prev) => [...prev, newTodo])
-    setText("")
-    setDueDate("")
-    setPriority("medium")
-    setCategory("other")
+
+    setTodos((current) => [optimisticTodo, ...current])
+    setStats((current) => ({ ...current, total: current.total + 1, active: current.active + 1 }))
     setShowForm(false)
 
-    fetch("/api/todos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        priority,
-        category,
-        dueDate: dueDate || undefined,
-      }),
-    })
-      .then((res) => res.json())
-      .then((created) => {
-        setTodos((prev) => prev.map((t) => (t.id === tempId ? created : t)))
-        setStats((s) => ({ ...s, total: s.total + 1, active: s.active + 1 }))
+    try {
+      const response = await fetch("/api/todos", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify(input),
       })
-  }
+      if (!response.ok) throw new Error("create failed")
+      const createdTodo: Todo = await response.json()
+      setTodos((current) => current.map((todo) => (todo.id === temporaryId ? createdTodo : todo)))
+    } catch {
+      setTodos(previousTodos)
+      setStats(previousStats)
+      setActionError("Failed to add the task.")
+    }
+  }, [])
 
-  const toggleTodo = (id: number) => {
-    const todo = todos.find((t) => t.id === id)
-    if (!todo) return
+  const toggleTodo = useCallback(async (todoId: number, nextDone: boolean) => {
+    const previousTodos = todosRef.current
+    const previousStats = statsRef.current
 
-    setTodos((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              done: !t.done,
-              completedAt: !t.done ? new Date().toISOString() : undefined,
-            }
-          : t
-      )
+    setTodos((current) =>
+      current.map((todo) =>
+        todo.id === todoId
+          ? { ...todo, done: nextDone, completedAt: nextDone ? new Date().toISOString() : undefined }
+          : todo,
+      ),
     )
-    setStats((s) => ({
-      ...s,
-      completed: todo.done ? s.completed - 1 : s.completed + 1,
-      active: todo.done ? s.active + 1 : s.active - 1,
+    setStats((current) => ({
+      ...current,
+      completed: nextDone ? current.completed + 1 : current.completed - 1,
+      active: nextDone ? current.active - 1 : current.active + 1,
     }))
 
-    fetch("/api/todos", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, toggleDone: true }),
-    })
-  }
+    try {
+      const response = await fetch(`/api/todos/${todoId}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ done: nextDone }),
+      })
+      if (!response.ok) throw new Error("update failed")
+    } catch {
+      setTodos(previousTodos)
+      setStats(previousStats)
+      setActionError("Failed to update the task.")
+    }
+  }, [])
 
-  const deleteTodo = (id: number) => {
-    const todo = todos.find((t) => t.id === id)
-    setTodos((prev) => prev.filter((t) => t.id !== id))
-    if (todo) {
-      setStats((s) => ({
-        ...s,
-        total: s.total - 1,
-        completed: todo.done ? s.completed - 1 : s.completed,
-        active: !todo.done ? s.active - 1 : s.active,
+  const deleteTodo = useCallback(async (todoId: number) => {
+    const previousTodos = todosRef.current
+    const previousStats = statsRef.current
+    const removedTodo = previousTodos.find((todo) => todo.id === todoId)
+
+    setTodos((current) => current.filter((todo) => todo.id !== todoId))
+    if (removedTodo) {
+      setStats((current) => ({
+        ...current,
+        total: current.total - 1,
+        completed: removedTodo.done ? current.completed - 1 : current.completed,
+        active: removedTodo.done ? current.active : current.active - 1,
       }))
     }
 
-    fetch(`/api/todos?id=${id}`, { method: "DELETE" })
-  }
+    try {
+      const response = await fetch(`/api/todos/${todoId}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("delete failed")
+    } catch {
+      setTodos(previousTodos)
+      setStats(previousStats)
+      setActionError("Failed to delete the task.")
+    }
+  }, [])
 
-  const startEdit = (todo: Todo) => {
-    setEditingId(todo.id)
-    setEditText(todo.text)
-  }
+  const saveTodoText = useCallback(async (todoId: number, text: string) => {
+    const previousTodos = todosRef.current
 
-  const saveEdit = (id: number) => {
-    if (!editText.trim()) return
-
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, text: editText } : t))
-    )
-    setEditingId(null)
-
-    fetch("/api/todos", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, text: editText }),
-    })
-  }
-
-  const updateTodoPriority = (id: number, newPriority: Priority) => {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, priority: newPriority } : t))
+    setTodos((current) =>
+      current.map((todo) => (todo.id === todoId ? { ...todo, text } : todo)),
     )
 
-    fetch("/api/todos", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, priority: newPriority }),
-    })
-  }
+    try {
+      const response = await fetch(`/api/todos/${todoId}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ text }),
+      })
+      if (!response.ok) throw new Error("update failed")
+    } catch {
+      setTodos(previousTodos)
+      setActionError("Failed to rename the task.")
+    }
+  }, [])
 
-  const isOverdue = (todo: Todo) => {
-    if (!todo.dueDate || todo.done) return false
-    return new Date(todo.dueDate) < new Date()
-  }
+  const changeTodoPriority = useCallback(async (todoId: number, priority: Priority) => {
+    const previousTodos = todosRef.current
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const today = new Date()
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
+    setTodos((current) =>
+      current.map((todo) => (todo.id === todoId ? { ...todo, priority } : todo)),
+    )
 
-    if (date.toDateString() === today.toDateString()) return "Today"
-    if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow"
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-  }
+    try {
+      const response = await fetch(`/api/todos/${todoId}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ priority }),
+      })
+      if (!response.ok) throw new Error("update failed")
+    } catch {
+      setTodos(previousTodos)
+      setActionError("Failed to change the priority.")
+    }
+  }, [])
 
-  const getCategoryColor = (cat: Category) => {
-    return categories.find((c) => c.id === cat)?.color || "#6b7280"
-  }
+  const clearFilters = useCallback(() => {
+    setFilterCategory("all")
+    setFilterPriority("all")
+    setFilterStatus("all")
+    setSearchQuery("")
+  }, [])
+
+  const toggleFilters = useCallback(() => setShowFilters((current) => !current), [])
+  const toggleForm = useCallback(() => setShowForm((current) => !current), [])
+  const hideForm = useCallback(() => setShowForm(false), [])
+  const retryFetch = useCallback(() => {
+    setLoadState({ status: "loading" })
+    setRefreshCounter((current) => current + 1)
+  }, [])
 
   const activeFiltersCount = [
     filterCategory !== "all",
@@ -258,12 +267,16 @@ export default function Home() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
-
       <div className="relative w-full max-w-2xl animate-in fade-in slide-in-from-bottom-8 duration-700">
         <div className="glass-card rounded-2xl p-8">
-          {/* Header */}
-          <header className="mb-6 space-y-2 text-center">
+          <header className="mb-6 space-y-2 text-center relative">
+            <button
+              onClick={logout}
+              title={userEmail ? `Sign out (${userEmail})` : "Sign out"}
+              className="absolute right-0 top-0 p-2 rounded-lg text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
             <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-white/5 mb-4 border border-white/5 ring-1 ring-white/10 shadow-lg">
               <Sparkles className="w-6 h-6 text-violet-400" />
             </div>
@@ -277,360 +290,61 @@ export default function Home() {
             </p>
           </header>
 
-          {/* Stats Bar */}
-          {!loading && (
-            <div className="grid grid-cols-4 gap-3 mb-6">
-              <div className="bg-white/5 rounded-xl p-3 text-center border border-white/5">
-                <div className="text-2xl font-bold text-white">
-                  {stats.total}
-                </div>
-                <div className="text-xs text-muted-foreground">Total</div>
-              </div>
-              <div className="bg-white/5 rounded-xl p-3 text-center border border-white/5">
-                <div className="text-2xl font-bold text-blue-400">
-                  {stats.active}
-                </div>
-                <div className="text-xs text-muted-foreground">Active</div>
-              </div>
-              <div className="bg-white/5 rounded-xl p-3 text-center border border-white/5">
-                <div className="text-2xl font-bold text-green-400">
-                  {stats.completed}
-                </div>
-                <div className="text-xs text-muted-foreground">Done</div>
-              </div>
-              <div className="bg-white/5 rounded-xl p-3 text-center border border-white/5">
-                <div className="text-2xl font-bold text-red-400">
-                  {stats.overdue}
-                </div>
-                <div className="text-xs text-muted-foreground">Overdue</div>
-              </div>
+          {actionError && (
+            <div className="mb-4 flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-sm text-red-300 animate-in fade-in duration-200">
+              <span>{actionError}</span>
+              <button
+                onClick={() => setActionError(null)}
+                className="p-1 rounded hover:bg-white/10 transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
           )}
 
-          {/* Search & Filters */}
+          {loadState.status === "ready" && <StatsBar stats={stats} />}
+
           <div className="mb-6 space-y-3">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search tasks..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
-                />
-              </div>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all",
-                  showFilters || activeFiltersCount > 0
-                    ? "bg-violet-500/20 border-violet-500/50 text-violet-300"
-                    : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10"
-                )}
-              >
-                <Filter className="w-4 h-4" />
-                {activeFiltersCount > 0 && (
-                  <span className="bg-violet-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {activeFiltersCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setShowForm(!showForm)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white hover:bg-violet-500 transition-all shadow-lg shadow-violet-500/20"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm font-medium">Add Task</span>
-              </button>
-            </div>
+            <FilterBar
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              filterCategory={filterCategory}
+              onFilterCategoryChange={setFilterCategory}
+              filterPriority={filterPriority}
+              onFilterPriorityChange={setFilterPriority}
+              filterStatus={filterStatus}
+              onFilterStatusChange={setFilterStatus}
+              categories={categories}
+              showFilters={showFilters}
+              onToggleFilters={toggleFilters}
+              onToggleForm={toggleForm}
+              activeFiltersCount={activeFiltersCount}
+              onClearFilters={clearFilters}
+            />
 
-            {/* Filter Options */}
-            {showFilters && (
-              <div className="flex flex-wrap gap-2 p-4 bg-white/5 rounded-xl border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200">
-                <select
-                  value={filterCategory}
-                  onChange={(e) =>
-                    setFilterCategory(e.target.value as Category | "all")
-                  }
-                  className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                >
-                  <option value="all">All Categories</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filterPriority}
-                  onChange={(e) =>
-                    setFilterPriority(e.target.value as Priority | "all")
-                  }
-                  className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                >
-                  <option value="all">All Priorities</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-                <select
-                  value={filterStatus}
-                  onChange={(e) =>
-                    setFilterStatus(
-                      e.target.value as "all" | "active" | "completed"
-                    )
-                  }
-                  className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                >
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                </select>
-                {activeFiltersCount > 0 && (
-                  <button
-                    onClick={() => {
-                      setFilterCategory("all")
-                      setFilterPriority("all")
-                      setFilterStatus("all")
-                      setSearchQuery("")
-                    }}
-                    className="text-sm text-muted-foreground hover:text-white transition-colors flex items-center gap-1"
-                  >
-                    <X className="w-3 h-3" />
-                    Clear filters
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Add Task Form */}
             {showForm && (
-              <form
+              <AddTodoForm
+                categories={categories}
                 onSubmit={addTodo}
-                className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200"
-              >
-                <input
-                  type="text"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="What needs to be done?"
-                  className="w-full bg-white/10 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                  autoFocus
-                />
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as Category)}
-                    className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value as Priority)}
-                    className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                  >
-                    <option value="low">Low Priority</option>
-                    <option value="medium">Medium Priority</option>
-                    <option value="high">High Priority</option>
-                  </select>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={!text.trim()}
-                    className="flex-1 bg-violet-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50 transition-all"
-                  >
-                    Add Task
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="px-4 py-2 rounded-lg border border-white/10 text-muted-foreground hover:bg-white/5 transition-all text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
+                onCancel={hideForm}
+              />
             )}
           </div>
 
-          {/* Todo List */}
           <div className="space-y-2 mb-6 min-h-[200px] max-h-[400px] overflow-y-auto">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center h-full space-y-4 py-12 text-muted-foreground/50">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-xs font-medium uppercase tracking-widest">
-                  Loading Tasks...
-                </p>
-              </div>
-            ) : todos.length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed border-white/5 rounded-xl bg-white/5">
-                <p className="text-muted-foreground">
-                  {activeFiltersCount > 0
-                    ? "No tasks match your filters."
-                    : "No tasks yet. Add one above!"}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {todos.map((todo) => (
-                  <div
-                    key={todo.id}
-                    className={cn(
-                      "group relative flex items-start gap-3 p-4 rounded-xl border transition-all duration-200",
-                      isOverdue(todo)
-                        ? "bg-red-500/10 border-red-500/30"
-                        : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20"
-                    )}
-                  >
-                    {/* Checkbox */}
-                    <button
-                      onClick={() => toggleTodo(todo.id)}
-                      className={cn(
-                        "flex-shrink-0 mt-0.5 flex items-center justify-center w-5 h-5 rounded-full border-2 transition-all duration-300",
-                        todo.done
-                          ? "bg-green-500 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]"
-                          : "border-muted-foreground hover:border-white"
-                      )}
-                    >
-                      {todo.done && (
-                        <Check className="w-3 h-3 text-white" strokeWidth={4} />
-                      )}
-                    </button>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      {editingId === todo.id ? (
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            onKeyDown={(e) =>
-                              e.key === "Enter" && saveEdit(todo.id)
-                            }
-                            className="flex-1 bg-white/10 border border-white/20 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => saveEdit(todo.id)}
-                            className="text-green-400 hover:text-green-300 text-sm"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="text-muted-foreground hover:text-white text-sm"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div
-                            onClick={() => startEdit(todo)}
-                            className={cn(
-                              "text-sm font-medium cursor-pointer transition-colors",
-                              todo.done
-                                ? "text-muted-foreground line-through decoration-white/20"
-                                : "text-foreground hover:text-violet-300"
-                            )}
-                          >
-                            {todo.text}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                            {/* Category Badge */}
-                            <span
-                              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-                              style={{
-                                backgroundColor: `${getCategoryColor(
-                                  todo.category
-                                )}20`,
-                                color: getCategoryColor(todo.category),
-                              }}
-                            >
-                              <Tag className="w-3 h-3" />
-                              {categories.find((c) => c.id === todo.category)
-                                ?.label || todo.category}
-                            </span>
-
-                            {/* Priority Badge */}
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full",
-                                priorityConfig[todo.priority].bg,
-                                priorityConfig[todo.priority].color
-                              )}
-                            >
-                              {priorityConfig[todo.priority].label}
-                            </span>
-
-                            {/* Due Date */}
-                            {todo.dueDate && (
-                              <span
-                                className={cn(
-                                  "inline-flex items-center gap-1 text-xs",
-                                  isOverdue(todo)
-                                    ? "text-red-400"
-                                    : "text-muted-foreground"
-                                )}
-                              >
-                                {isOverdue(todo) ? (
-                                  <AlertCircle className="w-3 h-3" />
-                                ) : (
-                                  <Calendar className="w-3 h-3" />
-                                )}
-                                {formatDate(todo.dueDate)}
-                              </span>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <select
-                        value={todo.priority}
-                        onChange={(e) =>
-                          updateTodoPriority(
-                            todo.id,
-                            e.target.value as Priority
-                          )
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        className="bg-white/10 border-0 rounded text-xs py-1 px-1 focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer"
-                      >
-                        <option value="low">Low</option>
-                        <option value="medium">Med</option>
-                        <option value="high">High</option>
-                      </select>
-                      <button
-                        onClick={() => deleteTodo(todo.id)}
-                        className="p-1.5 hover:bg-red-500/20 rounded-lg text-muted-foreground hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <TodoList
+              todos={todos}
+              categories={categories}
+              loadState={loadState}
+              hasActiveFilters={activeFiltersCount > 0}
+              onRetry={retryFetch}
+              onToggle={toggleTodo}
+              onDelete={deleteTodo}
+              onSaveText={saveTodoText}
+              onChangePriority={changeTodoPriority}
+            />
           </div>
 
-          {/* Keyboard Shortcut Hint */}
           <div className="text-center text-xs text-muted-foreground/50">
             <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono text-[10px]">
               Enter
@@ -641,9 +355,9 @@ export default function Home() {
 
         <div className="mt-6 text-center space-y-2">
           <div className="inline-flex gap-2 text-[10px] text-muted-foreground font-mono bg-white/5 px-3 py-1 rounded-full border border-white/5">
-            <span>v3.0.0-beta</span>
+            <span>v3.0.0</span>
             <span className="text-white/20">•</span>
-            <span>Turbo-Pack</span>
+            <span>{userEmail ?? "..."}</span>
             <span className="text-white/20">•</span>
             <span className="text-green-400">● Online</span>
           </div>

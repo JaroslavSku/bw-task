@@ -43,7 +43,6 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     /* Custom rich gradient background typical of "modern" SaaS */
     background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
                       radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
