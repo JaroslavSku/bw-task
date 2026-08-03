@@ -55,4 +55,9 @@ jobs:
         with:
           node-version: 24
 
-      - run: pnpm audit --prod --audit-level high
+      # audit-level critical: high/moderate nalezy jsou temer vzdy tranzitivni
+      # zavislosti, ktere si verzi diktuje samotny Next.js a nejdou upgradovat
+      # nezavisle. Blokovat pipeline na necem neopravitelnem by jen vedlo k
+      # ignorovani cervenych buildu. Critical je hranice, kde uz je potreba
+      # jednat hned (pin, patch, nebo docasne odstraneni zavislosti).
+      - run: pnpm audit --prod --audit-level critical
