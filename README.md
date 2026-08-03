@@ -31,13 +31,13 @@ ve dvou oknech — změna v jednom se do vteřiny projeví v druhém.
 
 ### Příkazy
 
-| Příkaz | Co dělá |
-|---|---|
-| `pnpm dev` | dev server (Turbopack) |
-| `pnpm build` / `pnpm start` | produkční build / server |
-| `pnpm test` | vitest (potřebuje DB `taskmaster_test`) |
-| `pnpm typecheck` / `pnpm lint` | tsc / eslint |
-| `pnpm migrate` | db-migrate up |
+| Příkaz                         | Co dělá                                 |
+| ------------------------------ | --------------------------------------- |
+| `pnpm dev`                     | dev server (Turbopack)                  |
+| `pnpm build` / `pnpm start`    | produkční build / server                |
+| `pnpm test`                    | vitest (potřebuje DB `taskmaster_test`) |
+| `pnpm typecheck` / `pnpm lint` | tsc / eslint                            |
+| `pnpm migrate`                 | db-migrate up                           |
 
 ## Co jsem našel a opravil
 
@@ -64,12 +64,12 @@ Původní kód obsahoval nastražené chyby. Nejdůležitější nálezy, ověř
 
 ## Výsledky měření (autocannon, produkční build)
 
-| Metrika | Před | Po |
-|---|---|---|
-| GET /api/todos, 5 spojení — medián latence | 114 ms | **12 ms** |
-| GET /api/todos, 5 spojení — propustnost | 43 req/s | **354 req/s** |
-| 50 spojení, 15 s | **pád serveru** (~23k chyb) | **0 chyb**, 386 req/s |
-| Paměť pod zátěží | +4,2 MB/request, trvale | stabilní ~250 MB |
+| Metrika                                    | Před                        | Po                    |
+| ------------------------------------------ | --------------------------- | --------------------- |
+| GET /api/todos, 5 spojení — medián latence | 114 ms                      | **12 ms**             |
+| GET /api/todos, 5 spojení — propustnost    | 43 req/s                    | **354 req/s**         |
+| 50 spojení, 15 s                           | **pád serveru** (~23k chyb) | **0 chyb**, 386 req/s |
+| Paměť pod zátěží                           | +4,2 MB/request, trvale     | stabilní ~250 MB      |
 
 ## Architektura
 
@@ -129,8 +129,11 @@ migrations/             db-migrate (čisté SQL v migrations/sqls)
   `ghcr.io/jaroslavsku/bw-task` (app) a `bw-task-migrate` (migrace) s tagy
   `latest` + SHA, poté trivy scan.
 - **`terraform/`** — Hetzner VM (cx23, Ubuntu 24.04) s firewallem (SSH jen z mé IP,
-  HTTP/HTTPS veřejné). Cloud-init nainstaluje Docker a spustí compose stack
-  (app + Postgres + Caddy) z ghcr image.
+  HTTP/HTTPS veřejné). Cloud-init dělá jen bootstrap: nainstaluje Docker a zapíše
+  `/opt/taskmaster/.env` se secrety.
+- **`deploy/`** — produkční stack jako běžné soubory (`docker-compose.prod.yml`
+  s ghcr images + Caddy, `Caddyfile`). Na server je dostane `scripts/deploy.ps1`,
+  takže aplikační změna nevyžaduje sáhnout na Terraform.
 
 Proměnné se nepíší do souboru, ale předávají přes `TF_VAR_*` proměnné prostředí
 (nic tajného tak neleží natrvalo na disku):
@@ -149,10 +152,17 @@ tofu apply
 **Živé nasazení:** https://taskmaster.sportagio.app — Caddy jako reverse proxy
 s automatickým Let's Encrypt certifikátem (HTTP se přesměruje na HTTPS).
 
-Deployment nové verze na VM: `docker compose pull && docker compose up -d`
-v `/opt/taskmaster` (kandidát na automatizaci, viz HANDOVER). Pozor: změna
-`terraform/cloud-init.yaml.tftpl` vynucuje znovuvytvoření serveru (nová IP) —
-pro úpravy na již běžícím serveru uprav soubory přímo přes SSH, viz HANDOVER.
+Po `tofu apply` je server jen připravený (Docker + secrety), aplikaci na něj
+dostane až deploy skript — infrastruktura a aplikace jsou oddělené kroky.
+
+Deployment nové verze (po merge do master, až doběhne `docker.yml`):
+
+```powershell
+.\scripts\deploy.ps1
+```
+
+Nakopíruje `deploy/` na server, stáhne nové image, restartuje stack a ověří
+`/api/health`. Automatizace přes CI je kandidát na doplnění, viz HANDOVER.
 
 ## Bezpečnost Docker image
 

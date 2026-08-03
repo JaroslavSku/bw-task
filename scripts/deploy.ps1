@@ -1,16 +1,22 @@
 param(
-    [string]$ServerIp = "78.47.88.125"
+    [string]$ServerIp = "78.47.88.125",
+    [string]$Domain = "taskmaster.sportagio.app"
 )
 
-Write-Host "Nasazuji novou verzi na $ServerIp..." -ForegroundColor Cyan
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$target = "root@$ServerIp"
 
-ssh "root@$ServerIp" "cd /opt/taskmaster && docker compose pull && docker compose up -d"
+Write-Host "Kopiruji konfiguraci na $ServerIp..." -ForegroundColor Cyan
+scp "$repoRoot\deploy\docker-compose.prod.yml" "${target}:/opt/taskmaster/docker-compose.yml"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Nasazeni selhalo (exit code $LASTEXITCODE)." -ForegroundColor Red
-    exit $LASTEXITCODE
-}
+scp "$repoRoot\deploy\Caddyfile" "${target}:/opt/taskmaster/Caddyfile"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Hotovo. Overuji health endpoint..." -ForegroundColor Cyan
+Write-Host "Stahuji nove image a restartuji stack..." -ForegroundColor Cyan
+ssh $target "cd /opt/taskmaster && docker compose pull && docker compose up -d"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Overuji health endpoint..." -ForegroundColor Cyan
 Start-Sleep -Seconds 5
-Invoke-RestMethod "https://taskmaster.sportagio.app/api/health"
+Invoke-RestMethod "https://$Domain/api/health"
