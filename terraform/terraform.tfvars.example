@@ -1,0 +1,5 @@
+hcloud_token      = "hetzner-api-token"
+my_ip             = "1.2.3.4"
+ssh_key_name      = "jaroslav-laptop"
+postgres_password = "strong-random-password"
+jwt_secret        = "random-string-with-at-least-32-characters"

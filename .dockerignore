@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+Dockerfile
+docker-compose.yml
+README.md
+HANDOVER.md
+docs
+terraform
+coverage
+*.log
+.vscode
+.idea
