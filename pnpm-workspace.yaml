@@ -1,2 +1,8 @@
+minimumReleaseAge: 10080
+blockExoticSubdeps: true
+ignoreScripts: true
 allowBuilds:
+  cpu-features: false
   sharp: false
+  ssh2: false
+  unrs-resolver: false
