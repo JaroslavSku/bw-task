@@ -9,6 +9,7 @@ resource "hcloud_server" "taskmaster" {
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     postgres_password = var.postgres_password
     jwt_secret        = var.jwt_secret
+    domain            = var.domain
   })
 }
 

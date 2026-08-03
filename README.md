@@ -129,7 +129,8 @@ migrations/             db-migrate (čisté SQL v migrations/sqls)
   `ghcr.io/jaroslavsku/bw-task` (app) a `bw-task-migrate` (migrace) s tagy
   `latest` + SHA, poté trivy scan.
 - **`terraform/`** — Hetzner VM (cx23, Ubuntu 24.04) s firewallem (SSH jen z mé IP,
-  HTTP veřejné). Cloud-init nainstaluje Docker a spustí compose stack z ghcr image.
+  HTTP/HTTPS veřejné). Cloud-init nainstaluje Docker a spustí compose stack
+  (app + Postgres + Caddy) z ghcr image.
 
 Proměnné se nepíší do souboru, ale předávají přes `TF_VAR_*` proměnné prostředí
 (nic tajného tak neleží natrvalo na disku):
@@ -140,12 +141,18 @@ $env:TF_VAR_hcloud_token      = "..."
 $env:TF_VAR_my_ip             = (curl.exe -s ifconfig.me)
 $env:TF_VAR_postgres_password = "..."
 $env:TF_VAR_jwt_secret        = "..."   # min. 32 znaku
+$env:TF_VAR_domain            = "taskmaster.sportagio.app"
 tofu init
 tofu apply
 ```
 
+**Živé nasazení:** https://taskmaster.sportagio.app — Caddy jako reverse proxy
+s automatickým Let's Encrypt certifikátem (HTTP se přesměruje na HTTPS).
+
 Deployment nové verze na VM: `docker compose pull && docker compose up -d`
-v `/opt/taskmaster` (kandidát na automatizaci, viz HANDOVER).
+v `/opt/taskmaster` (kandidát na automatizaci, viz HANDOVER). Pozor: změna
+`terraform/cloud-init.yaml.tftpl` vynucuje znovuvytvoření serveru (nová IP) —
+pro úpravy na již běžícím serveru uprav soubory přímo přes SSH, viz HANDOVER.
 
 ## Bezpečnost Docker image
 

@@ -36,8 +36,8 @@ write_files:
           environment:
             DATABASE_URL: postgres://postgres:$${POSTGRES_PASSWORD:?}@db:5432/taskmaster
             JWT_SECRET: $${JWT_SECRET:?}
-          ports:
-            - "80:3000"
+          expose:
+            - "3000"
           depends_on:
             db:
               condition: service_healthy
@@ -50,8 +50,29 @@ write_files:
             retries: 3
           restart: unless-stopped
 
+        caddy:
+          image: caddy:2-alpine
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - /opt/taskmaster/Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy-data:/data
+            - caddy-config:/config
+          depends_on:
+            app:
+              condition: service_healthy
+          restart: unless-stopped
+
       volumes:
         db-data:
+        caddy-data:
+        caddy-config:
+  - path: /opt/taskmaster/Caddyfile
+    content: |
+      ${domain} {
+          reverse_proxy app:3000
+      }
   - path: /opt/taskmaster/.env
     permissions: "0600"
     content: |

@@ -5,28 +5,26 @@ kontextu. U každé je uvedeno, co už v projektu je a na co si dát pozor.
 
 ---
 
-## [P1] HTTPS s vlastní doménou (Caddy)
+## [HOTOVO] HTTPS s vlastní doménou (Caddy)
 
-**Kontext:** Aplikace na VM běží na portu 80 bez TLS. Session cookie má
-`secure: true` v produkci (`lib/auth/session.ts`) — prohlížeč `Secure` cookie
-přes čisté HTTP nikdy nepošle zpátky. Bez tohohle nasazení nejde přihlásit:
-server cookie nastaví, ale klient ji zahodí a hned tě to vrátí na `/login`.
-Ne „nemusí fungovat", ale nefunguje jistě. Compose stack je v `/opt/taskmaster`,
-definovaný v `terraform/cloud-init.yaml.tftpl`.
+Aplikace jede na `https://taskmaster.sportagio.app` — Caddy jako reverse proxy
+(image `caddy:2-alpine`, porty 80+443) s automatickým Let's Encrypt certifikátem,
+HTTP přesměrovává na HTTPS (308). Ověřeno end-to-end: registrace i login
+fungují, `Secure` cookie se drží.
 
-**Úkol:**
-1. Zaregistruj/nasměruj doménu (A záznam na IP z `tofu output server_ip`).
-2. Do compose přidej službu `caddy` (image `caddy:2-alpine`, porty 80+443,
-   volume na certifikáty) s Caddyfile: `tvoje-domena.cz { reverse_proxy app:3000 }`.
-3. U služby `app` zruš mapování portu 80 (zůstane jen vnitřní síť).
-4. Otevři port 443 v `terraform/firewall.tf`.
+**Pozor na jednu věc při dalších změnách:** `terraform/cloud-init.yaml.tftpl`
+je zdroj pravdy pro `tofu apply` from scratch, ale změna `user_data` u
+`hcloud_server` vynucuje **znovuvytvoření serveru** (nová IP, DNS by se musel
+přesměrovat znovu). Caddy byl proto na již běžící VM nasazený ručně přes SSH
+(`/opt/taskmaster/docker-compose.yml` a `/opt/taskmaster/Caddyfile` na serveru),
+zatímco `cloud-init.yaml.tftpl` v repu je zaktualizovaný pro budoucí čisté
+nasazení. Terraform state proto ukazuje „pending replace" na `hcloud_server.taskmaster`
+(rozdíl v `user_data`) — nespouštěj plný `tofu apply` bez `-target`, dokud
+nechceš server skutečně přetvořit s novou IP.
 
-**Hotovo, když:** aplikace jede na https://tvoje-domena.cz, certifikát platný
-(Caddy si ho vyřídí sám přes Let's Encrypt), http přesměrovává na https.
-
-**Odhad:** 2–3 h
-**Pozor na:** SSE přes reverse proxy — Caddy streamuje odpovědi automaticky,
-ale kdyby realtime přestal chodit, hledej buffering na proxy.
+**Zbývá:** SSE přes reverse proxy zatím nikdo neotestoval dlouhodobě — Caddy
+streamované odpovědi nebufferuje ve výchozím stavu, ale stálo by za to nechat
+otevřené dvě okna přes doménu pár hodin a ověřit, že realtime nepřestane chodit.
 
 ---
 
