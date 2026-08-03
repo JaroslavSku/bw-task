@@ -37,15 +37,10 @@ export default function Home() {
   const [refreshCounter, setRefreshCounter] = useState(0)
 
   const todosRef = useRef<Todo[]>([])
-  const statsRef = useRef<TodoStats>(emptyStats)
 
   useEffect(() => {
     todosRef.current = todos
   }, [todos])
-
-  useEffect(() => {
-    statsRef.current = stats
-  }, [stats])
 
   useEffect(() => {
     if (!actionError) return
@@ -113,135 +108,90 @@ export default function Home() {
     }
   }, [router])
 
-  const addTodo = useCallback(async (input: NewTodoInput) => {
-    const previousTodos = todosRef.current
-    const previousStats = statsRef.current
-    const temporaryId = -Date.now()
-    const optimisticTodo: Todo = {
-      id: temporaryId,
-      text: input.text,
-      done: false,
-      priority: input.priority,
-      category: input.category,
-      dueDate: input.dueDate,
-      createdAt: new Date().toISOString(),
-    }
+  const runTodoAction = useCallback(
+    async (
+      applyOptimistic: (todos: Todo[]) => Todo[],
+      performRequest: () => Promise<Response>,
+      errorMessage: string,
+    ) => {
+      const previousTodos = todosRef.current
+      setTodos(applyOptimistic)
 
-    setTodos((current) => [optimisticTodo, ...current])
-    setStats((current) => ({ ...current, total: current.total + 1, active: current.active + 1 }))
-    setShowForm(false)
+      try {
+        const response = await performRequest()
+        if (!response.ok) throw new Error(errorMessage)
+        requestRefresh()
+      } catch {
+        setTodos(previousTodos)
+        setActionError(errorMessage)
+      }
+    },
+    [requestRefresh],
+  )
 
-    try {
-      const response = await fetch("/api/todos", {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify(input),
-      })
-      if (!response.ok) throw new Error("create failed")
-      const createdTodo: Todo = await response.json()
-      setTodos((current) => current.map((todo) => (todo.id === temporaryId ? createdTodo : todo)))
-    } catch {
-      setTodos(previousTodos)
-      setStats(previousStats)
-      setActionError("Failed to add the task.")
-    }
-  }, [])
+  const addTodo = useCallback(
+    (input: NewTodoInput) => {
+      setShowForm(false)
+      const optimisticTodo: Todo = {
+        id: -Date.now(),
+        text: input.text,
+        done: false,
+        priority: input.priority,
+        category: input.category,
+        dueDate: input.dueDate,
+        createdAt: new Date().toISOString(),
+      }
+      runTodoAction(
+        (todos) => [optimisticTodo, ...todos],
+        () => fetch("/api/todos", { method: "POST", headers: jsonHeaders, body: JSON.stringify(input) }),
+        "Failed to add the task.",
+      )
+    },
+    [runTodoAction],
+  )
 
-  const toggleTodo = useCallback(async (todoId: number, nextDone: boolean) => {
-    const previousTodos = todosRef.current
-    const previousStats = statsRef.current
+  const patchTodo = useCallback(
+    (todoId: number, patch: Partial<Todo>, errorMessage: string) => {
+      runTodoAction(
+        (todos) => todos.map((todo) => (todo.id === todoId ? { ...todo, ...patch } : todo)),
+        () => fetch(`/api/todos/${todoId}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(patch) }),
+        errorMessage,
+      )
+    },
+    [runTodoAction],
+  )
 
-    setTodos((current) =>
-      current.map((todo) =>
-        todo.id === todoId
-          ? { ...todo, done: nextDone, completedAt: nextDone ? new Date().toISOString() : undefined }
-          : todo,
-      ),
-    )
-    setStats((current) => ({
-      ...current,
-      completed: nextDone ? current.completed + 1 : current.completed - 1,
-      active: nextDone ? current.active - 1 : current.active + 1,
-    }))
+  const toggleTodo = useCallback(
+    (todoId: number, nextDone: boolean) => {
+      patchTodo(todoId, { done: nextDone }, "Failed to update the task.")
+    },
+    [patchTodo],
+  )
 
-    try {
-      const response = await fetch(`/api/todos/${todoId}`, {
-        method: "PATCH",
-        headers: jsonHeaders,
-        body: JSON.stringify({ done: nextDone }),
-      })
-      if (!response.ok) throw new Error("update failed")
-    } catch {
-      setTodos(previousTodos)
-      setStats(previousStats)
-      setActionError("Failed to update the task.")
-    }
-  }, [])
+  const saveTodoText = useCallback(
+    (todoId: number, text: string) => {
+      patchTodo(todoId, { text }, "Failed to rename the task.")
+    },
+    [patchTodo],
+  )
 
-  const deleteTodo = useCallback(async (todoId: number) => {
-    const previousTodos = todosRef.current
-    const previousStats = statsRef.current
-    const removedTodo = previousTodos.find((todo) => todo.id === todoId)
+  const changeTodoPriority = useCallback(
+    (todoId: number, priority: Priority) => {
+      patchTodo(todoId, { priority }, "Failed to change the priority.")
+    },
+    [patchTodo],
+  )
 
-    setTodos((current) => current.filter((todo) => todo.id !== todoId))
-    if (removedTodo) {
-      setStats((current) => ({
-        ...current,
-        total: current.total - 1,
-        completed: removedTodo.done ? current.completed - 1 : current.completed,
-        active: removedTodo.done ? current.active : current.active - 1,
-      }))
-    }
-
-    try {
-      const response = await fetch(`/api/todos/${todoId}`, { method: "DELETE" })
-      if (!response.ok) throw new Error("delete failed")
-    } catch {
-      setTodos(previousTodos)
-      setStats(previousStats)
-      setActionError("Failed to delete the task.")
-    }
-  }, [])
-
-  const saveTodoText = useCallback(async (todoId: number, text: string) => {
-    const previousTodos = todosRef.current
-
-    setTodos((current) =>
-      current.map((todo) => (todo.id === todoId ? { ...todo, text } : todo)),
-    )
-
-    try {
-      const response = await fetch(`/api/todos/${todoId}`, {
-        method: "PATCH",
-        headers: jsonHeaders,
-        body: JSON.stringify({ text }),
-      })
-      if (!response.ok) throw new Error("update failed")
-    } catch {
-      setTodos(previousTodos)
-      setActionError("Failed to rename the task.")
-    }
-  }, [])
-
-  const changeTodoPriority = useCallback(async (todoId: number, priority: Priority) => {
-    const previousTodos = todosRef.current
-
-    setTodos((current) =>
-      current.map((todo) => (todo.id === todoId ? { ...todo, priority } : todo)),
-    )
-
-    try {
-      const response = await fetch(`/api/todos/${todoId}`, {
-        method: "PATCH",
-        headers: jsonHeaders,
-        body: JSON.stringify({ priority }),
-      })
-      if (!response.ok) throw new Error("update failed")
-    } catch {
-      setTodos(previousTodos)
-      setActionError("Failed to change the priority.")
-    }
-  }, [])
+  const deleteTodo = useCallback(
+    (todoId: number) => {
+      runTodoAction(
+        (todos) => todos.filter((todo) => todo.id !== todoId),
+        () => fetch(`/api/todos/${todoId}`, { method: "DELETE" }),
+        "Failed to delete the task.",
+      )
+    },
+    [runTodoAction],
+  )
 
   const clearFilters = useCallback(() => {
     setFilterCategory("all")

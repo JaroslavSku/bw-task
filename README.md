@@ -109,8 +109,16 @@ migrations/             db-migrate (čisté SQL v migrations/sqls)
   a hlídat reset v poolu — přidaná složitost bez přidané bezpečnosti v tomto modelu.
 - **Ne Redis/cache** — per-user data měněná každou akcí; cache by netrefovala
   a invalidace je riziko úniku mezi uživateli. Správný nástroj: indexy + stránkování.
-- **SSE, ne WebSocket** — tok je jednosměrný, SSE je obyčejné HTTP s vestavěným
-  reconnectem.
+- **SSE, ne WebSocket** — tok notifikací je jednosměrný (zápisy jdou běžným
+  POST/PATCH), takže obousměrný kanál není potřeba. SSE je obyčejné HTTP: projde
+  proxy, autentizuje se stejnou cookie a prohlížeč má vestavěný reconnect.
+  WebSocket by navíc v Next.js Route Handlers nativně nešel — vyžadoval by custom
+  server nebo samostatný ws proces, tedy další infrastrukturu za nulový přínos.
+- **`pg_notify`, ne in-memory events nebo Redis pub/sub** — události musí dorazit
+  všem instancím aplikace, in-memory emitter zná jen svou instanci. Postgres už
+  ve stacku je a LISTEN/NOTIFY tuhle práci odvede bez další služby; DB trigger
+  navíc zachytí i změny provedené mimo aplikaci. Redis pub/sub by byl správný
+  krok, až by NOTIFY přestal stačit (velké payloady, tisíce zpráv/s).
 - **pnpm supply chain** — `minimumReleaseAge: 10080` (instalují se jen ≥7 dní staré
   verze), build skripty závislostí blokované (`sharp` ověřen jako nepotřebný —
   `next/image` se nepoužívá).
